@@ -1,0 +1,510 @@
+/* Photo Portfolio Styles */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Instrument Serif', Georgia, serif;
+  background-color: #000000;
+  color: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Header */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background-color: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 1.5rem 2rem;
+}
+
+.header-content {
+  max-width: 1600px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.site-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 2rem;
+  font-weight: 300;
+  letter-spacing: 0.05em;
+}
+
+.header-actions {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+/* Buttons */
+button {
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.btn-primary {
+  padding: 0.5rem 1.5rem;
+  background-color: #ffffff;
+  color: #000000;
+  border-radius: 2px;
+  font-size: 0.875rem;
+  letter-spacing: 0.05em;
+}
+
+.btn-primary:hover {
+  background-color: #e0e0e0;
+}
+
+.btn-secondary {
+  background: none;
+  color: #999;
+  font-size: 0.875rem;
+  letter-spacing: 0.05em;
+}
+
+.btn-secondary:hover {
+  color: #ffffff;
+}
+
+.btn-disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* Tag Filter Bar */
+.tag-filter {
+  padding: 2rem 2rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: #000000;
+}
+
+.tag-filter-content {
+  max-width: 1600px;
+  margin: 0 auto;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.tag-button {
+  padding: 0.5rem 1rem;
+  background-color: transparent;
+  color: #999;
+  border: 1px solid #333;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  letter-spacing: 0.03em;
+}
+
+.tag-button.selected {
+  background-color: #ffffff;
+  color: #000000;
+  border-color: #ffffff;
+}
+
+/* Gallery */
+.gallery-container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 3rem 2rem;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(400px, 100%), 1fr));
+  gap: 1.5rem;
+  grid-auto-flow: dense;
+}
+
+.photo-card {
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+  border-radius: 2px;
+  transition: transform 0.3s ease;
+  background-color: #0a0a0a;
+}
+
+.photo-card:hover {
+  transform: translateY(-4px);
+}
+
+.photo-card img {
+  width: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.admin-controls {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.photo-card:hover .admin-controls {
+  opacity: 1;
+}
+
+.admin-btn {
+  padding: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.95);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Modal Overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  backdrop-filter: blur(5px);
+}
+
+.modal-overlay.lightbox {
+  background-color: rgba(0, 0, 0, 0.95);
+  z-index: 300;
+  padding: 0;
+  display: block; /* Override flex from .modal-overlay */
+  align-items: initial;
+  justify-content: initial;
+}
+
+.modal-content {
+  background-color: #ffffff;
+  padding: 3rem;
+  border-radius: 2px;
+  max-width: 600px;
+  width: 90%;
+  color: #000000;
+}
+
+.modal-content.wide {
+  max-width: 900px;
+}
+
+.modal-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.5rem;
+  margin-bottom: 2rem;
+  font-weight: 300;
+  letter-spacing: 0.05em;
+  color: #000000;
+}
+
+/* Form Elements */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+textarea {
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: 1rem;
+  width: 100%;
+}
+
+textarea {
+  resize: vertical;
+}
+
+input[type="file"] {
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 2px;
+  font-family: inherit;
+}
+
+/* Drag & Drop Zone */
+.dropzone {
+  border: 2px dashed #ddd;
+  border-radius: 4px;
+  padding: 3rem;
+  text-align: center;
+  background-color: transparent;
+  transition: all 0.2s ease;
+  margin-bottom: 1.5rem;
+}
+
+.dropzone.active {
+  border-color: #000;
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.dropzone-text {
+  font-size: 1.1rem;
+  color: #666;
+  margin-bottom: 1rem;
+}
+
+.dropzone-subtext {
+  font-size: 0.9rem;
+  color: #999;
+  margin-bottom: 1.5rem;
+}
+
+/* File Upload List */
+.file-upload-item {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: white;
+}
+
+.file-upload-item.uploaded {
+  background-color: #f0f9f0;
+}
+
+.file-preview {
+  width: 150px;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+.file-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.file-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.remove-btn {
+  margin-left: 0.5rem;
+  padding: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  color: #999;
+}
+
+.upload-success {
+  margin-left: 0.5rem;
+  color: #4caf50;
+  font-size: 1.2rem;
+}
+
+/* Lightbox/Slideshow */
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  font-size: 2rem;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  z-index: 10;
+}
+
+.lightbox-nav:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.lightbox-nav.prev {
+  left: 2rem;
+}
+
+.lightbox-nav.next {
+  right: 2rem;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 2rem;
+  right: 2rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  font-size: 1.5rem;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  z-index: 10;
+}
+
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.lightbox-content {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.lightbox-image {
+  max-width: 100vw;
+  max-height: 85vh;
+  object-fit: contain;
+  border-radius: 0;
+}
+
+.lightbox-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, transparent 100%);
+  padding: 4rem 2rem 2rem;
+  text-align: center;
+  color: white;
+}
+
+.lightbox-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.5rem;
+  font-weight: 300;
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.05em;
+}
+
+.lightbox-description {
+  font-size: 1rem;
+  line-height: 1.6;
+  opacity: 0.8;
+  margin-bottom: 1rem;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.lightbox-tags {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.lightbox-tag {
+  padding: 0.25rem 0.75rem;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  font-size: 0.875rem;
+  backdrop-filter: blur(10px);
+}
+
+/* Utility Classes */
+.flex-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.flex-row {
+  display: flex;
+  gap: 1rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header {
+    padding: 1rem;
+  }
+  
+  .site-title {
+    font-size: 1.5rem;
+  }
+  
+  .gallery-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .lightbox-nav {
+    width: 2.5rem;
+    height: 2.5rem;
+    font-size: 1.5rem;
+  }
+  
+  .lightbox-nav.prev {
+    left: 1rem;
+  }
+  
+  .lightbox-nav.next {
+    right: 1rem;
+  }
+  
+  .lightbox-close {
+    top: 1rem;
+    right: 1rem;
+  }
+  
+  .modal-content {
+    padding: 2rem;
+  }
+  
+  .file-upload-item {
+    grid-template-columns: 100px 1fr;
+  }
+  
+  .file-preview {
+    width: 100px;
+    height: 100px;
+  }
+}
