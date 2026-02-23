@@ -336,6 +336,60 @@ const PhotoPortfolio = () => {
       console.error('Delete error:', error);
     }
   };
+
+  // Edit photo
+  const handleEdit = async () => {
+    if (!editingPhoto) return;
+
+    try {
+      // Update photo metadata
+      await supabase
+        .from('photos')
+        .update({
+          title: editingPhoto.title,
+          description: editingPhoto.description
+        })
+        .eq('id', editingPhoto.id);
+
+      // Update tags
+      // First, delete existing tags
+      await supabase.from('photo_tags').delete().eq('photo_id', editingPhoto.id);
+
+      // Then add new tags
+      const tagNames = editingPhoto.tags.split(',').map(t => t.trim()).filter(Boolean);
+      for (const tagName of tagNames) {
+        const { data: existingTag } = await supabase
+          .from('tags')
+          .select('id')
+          .eq('name', tagName)
+          .maybeSingle();
+
+        let tagId;
+        if (existingTag) {
+          tagId = existingTag.id;
+        } else {
+          const { data: newTag } = await supabase
+            .from('tags')
+            .insert({ name: tagName })
+            .select()
+            .single();
+          tagId = newTag.id;
+        }
+
+        await supabase
+          .from('photo_tags')
+          .insert({
+            photo_id: editingPhoto.id,
+            tag_id: tagId
+          });
+      }
+
+      setEditingPhoto(null);
+      fetchPhotos();
+    } catch (error) {
+      alert('Update failed: ' + error.message);
+    }
+  };
   
   // Lightbox navigation
   const openLightbox = (index) => {
