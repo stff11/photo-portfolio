@@ -361,17 +361,17 @@ const PhotoPortfolio = () => {
         // Handle tags - combine manual tags with AI-generated tags if enabled
         let allTags = fileData.tags;
         
-        if (useAITags) {
-          const aiTags = await generateAITags(fileData.file, true);
-          if (aiTags) {
-            // Combine and deduplicate tags
-            const existingTags = allTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-            const newTags = aiTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-            const combined = [...new Set([...existingTags, ...newTags])];
-            allTags = combined.join(', ');
-            console.log('Combined tags:', allTags);
-          }
-        }
+        // if (useAITags) {
+        //   const aiTags = await generateAITags(fileData.file, true);
+        //   if (aiTags) {
+        //     // Combine and deduplicate tags
+        //     const existingTags = allTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+        //     const newTags = aiTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+        //     const combined = [...new Set([...existingTags, ...newTags])];
+        //     allTags = combined.join(', ');
+        //     console.log('Combined tags:', allTags);
+        //   }
+        // }
         
         const tagNames = allTags.split(',').map(t => t.trim()).filter(Boolean);
         for (const tagName of tagNames) {
