@@ -433,10 +433,12 @@ const PhotoPortfolio = () => {
 
   // Cloudinary URL builders
   const getThumbUrl = (url) => {
+    if (!url) return '';
     return url.replace('/upload/', '/upload/w_600,h_600,c_fill,f_auto,q_auto/');
   };
 
   const getFullUrl = (url) => {
+    if (!url) return '';
     return url.replace('/upload/', '/upload/w_2000,f_auto,q_auto/');
   };
 
