@@ -240,7 +240,7 @@ const PhotoPortfolio = () => {
         const { data: photo, error } = await supabase
           .from('photos')
           .insert({
-            url: cloudinaryData.secure_url,
+            cloudinary_url: cloudinaryData.secure_url,
             cloudinary_public_id: cloudinaryData.public_id,
             title: fileData.title || fileData.file.name,
             description: fileData.description,
