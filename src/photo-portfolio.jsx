@@ -433,11 +433,18 @@ const PhotoPortfolio = () => {
 
   // Cloudinary URL builders
   const getThumbUrl = (url) => {
-    if (!url) return '';
-    if (url.includes('/upload/')) {
-      return url.replace('/upload/', '/upload/w_600,h_600,c_fill,f_auto,q_auto/');
+    console.log('getThumbUrl input:', url);
+    if (!url) {
+      console.log('URL is null/undefined');
+      return '';
     }
-    return url; // Return original URL if it doesn't match expected format
+    if (url.includes('/upload/')) {
+      const result = url.replace('/upload/', '/upload/w_600,h_600,c_fill,f_auto,q_auto/');
+      console.log('getThumbUrl output:', result);
+      return result;
+    }
+    console.log('URL does not contain /upload/, returning original:', url);
+    return url;
   };
 
   const getFullUrl = (url) => {
@@ -445,7 +452,7 @@ const PhotoPortfolio = () => {
     if (url.includes('/upload/')) {
       return url.replace('/upload/', '/upload/w_2000,f_auto,q_auto/');
     }
-    return url; // Return original URL if it doesn't match expected format
+    return url;
   };
 
   return (
