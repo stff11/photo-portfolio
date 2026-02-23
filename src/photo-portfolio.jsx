@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import exifr from 'exifr';
 import './photo-portfolio.css';
 
 // Initialize Supabase client
@@ -21,6 +22,95 @@ const computeFileHash = async (file) => {
   return hashHex;
 };
 
+// Extract location from EXIF data
+const extractLocation = async (file) => {
+  try {
+    const exifData = await exifr.parse(file, { gps: true });
+    
+    if (exifData && exifData.latitude && exifData.longitude) {
+      console.log('GPS coordinates found:', exifData.latitude, exifData.longitude);
+      
+      // Reverse geocode to get location name
+      const location = await reverseGeocode(exifData.latitude, exifData.longitude);
+      return location;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error extracting location:', error);
+    return null;
+  }
+};
+
+// Extract keywords/tags from EXIF data
+const extractExifKeywords = async (file) => {
+  try {
+    const exifData = await exifr.parse(file, { 
+      iptc: true,  // IPTC metadata includes keywords
+      xmp: true    // XMP metadata also has keywords
+    });
+    
+    // Try different keyword fields
+    const keywords = 
+      exifData?.Keywords || 
+      exifData?.Subject || 
+      exifData?.Category ||
+      exifData?.SupplementalCategories ||
+      [];
+    
+    if (keywords && keywords.length > 0) {
+      console.log('EXIF keywords found:', keywords);
+      return Array.isArray(keywords) ? keywords.join(', ') : keywords;
+    }
+    
+    return '';
+  } catch (error) {
+    console.error('Error extracting keywords:', error);
+    return '';
+  }
+};
+
+// Reverse geocode coordinates to location name
+const reverseGeocode = async (latitude, longitude) => {
+  try {
+    // Using Nominatim (OpenStreetMap) - free, no API key needed
+    // Add delay to respect rate limits
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
+      {
+        headers: {
+          'User-Agent': 'PhotoPortfolio/1.0'
+        }
+      }
+    );
+    
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    const address = data.address;
+    
+    // Build location string: "City, Country" or "State, Country"
+    const parts = [];
+    
+    if (address.city) parts.push(address.city);
+    else if (address.town) parts.push(address.town);
+    else if (address.village) parts.push(address.village);
+    else if (address.county) parts.push(address.county);
+    else if (address.state) parts.push(address.state);
+    
+    if (address.country) parts.push(address.country);
+    
+    const locationString = parts.join(', ') || null;
+    console.log('Location found:', locationString);
+    return locationString;
+  } catch (error) {
+    console.error('Geocoding error:', error);
+    return null;
+  }
+};
+
 // Helper to capitalize first letter
 const capitalize = (str) => str.charAt(0).toUpperCase() + str.slice(1);
 
@@ -39,6 +129,7 @@ const PhotoPortfolio = () => {
   const [uploadFiles, setUploadFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [useAITags, setUseAITags] = useState(false);
 
   // Check auth state
   useEffect(() => {
@@ -141,15 +232,24 @@ const PhotoPortfolio = () => {
     addFiles(files);
   };
 
-  const addFiles = (files) => {
-    const newFiles = files.map(file => ({
-      file,
-      preview: URL.createObjectURL(file),
-      title: '',
-      description: '',
-      tags: '',
-      uploaded: false
-    }));
+  const addFiles = async (files) => {
+    const filePromises = files.map(async (file) => {
+      console.log(`File: ${file.name}, Size: ${(file.size / 1024 / 1024).toFixed(2)}MB, Type: ${file.type}`);
+      
+      // Extract EXIF keywords
+      const exifKeywords = await extractExifKeywords(file);
+      
+      return {
+        file,
+        preview: URL.createObjectURL(file),
+        title: '',
+        description: '',
+        tags: exifKeywords, // Pre-fill with EXIF keywords if available
+        uploaded: false
+      };
+    });
+    
+    const newFiles = await Promise.all(filePromises);
     setUploadFiles(prev => [...prev, ...newFiles]);
   };
 
@@ -205,6 +305,10 @@ const PhotoPortfolio = () => {
         // Compute file hash
         const fileHash = await computeFileHash(fileData.file);
         
+        // Extract location from EXIF data
+        const location = await extractLocation(fileData.file);
+        console.log('Extracted location for', fileData.file.name, ':', location);
+        
         // Check if photo with this hash already exists
         const { data: existingPhoto } = await supabase
           .from('photos')
@@ -221,6 +325,8 @@ const PhotoPortfolio = () => {
         const formData = new FormData();
         formData.append('file', fileData.file);
         formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+        formData.append('quality', 'auto:best'); // Force best quality
+        formData.append('resource_type', 'image');
         
         const cloudinaryResponse = await fetch(
           `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
@@ -236,7 +342,7 @@ const PhotoPortfolio = () => {
         
         const cloudinaryData = await cloudinaryResponse.json();
         
-        // Save to Supabase
+        // Save to Supabase with location
         const { data: photo, error } = await supabase
           .from('photos')
           .insert({
@@ -244,15 +350,30 @@ const PhotoPortfolio = () => {
             cloudinary_public_id: cloudinaryData.public_id,
             title: fileData.title || fileData.file.name,
             description: fileData.description,
-            file_hash: fileHash
+            file_hash: fileHash,
+            location: location
           })
           .select()
           .single();
         
         if (error) throw error;
         
-        // Handle tags
-        const tagNames = fileData.tags.split(',').map(t => t.trim()).filter(Boolean);
+        // Handle tags - combine manual tags with AI-generated tags if enabled
+        let allTags = fileData.tags;
+        
+        if (useAITags) {
+          const aiTags = await generateAITags(fileData.file, true);
+          if (aiTags) {
+            // Combine and deduplicate tags
+            const existingTags = allTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+            const newTags = aiTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+            const combined = [...new Set([...existingTags, ...newTags])];
+            allTags = combined.join(', ');
+            console.log('Combined tags:', allTags);
+          }
+        }
+        
+        const tagNames = allTags.split(',').map(t => t.trim()).filter(Boolean);
         for (const tagName of tagNames) {
           const { data: existingTag } = await supabase
             .from('tags')
@@ -435,7 +556,7 @@ const PhotoPortfolio = () => {
   const getThumbUrl = (url) => {
     if (!url) return '';
     if (url.includes('/upload/')) {
-      // Higher quality thumbnails with better compression
+      // Higher quality thumbnails
       return url.replace('/upload/', '/upload/w_800,h_800,c_limit,q_90,f_auto/');
     }
     return url;
@@ -443,10 +564,7 @@ const PhotoPortfolio = () => {
 
   const getFullUrl = (url) => {
     if (!url) return '';
-    if (url.includes('/upload/')) {
-      // High quality for fullscreen: max 3000px width, quality 95, no aggressive compression
-      return url.replace('/upload/', '/upload/w_3000,q_95,f_auto/');
-    }
+    // Return original quality for fullscreen - no transformations
     return url;
   };
 
@@ -641,6 +759,20 @@ const PhotoPortfolio = () => {
               </div>
             )}
 
+            <div className="ai-toggle">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={useAITags}
+                  onChange={(e) => setUseAITags(e.target.checked)}
+                />
+                <span>Generate additional tags using AI (requires API key)</span>
+              </label>
+              {useAITags && !process.env.REACT_APP_ANTHROPIC_API_KEY && (
+                <p className="ai-warning">⚠️ Set REACT_APP_ANTHROPIC_API_KEY environment variable to use AI tagging</p>
+              )}
+            </div>
+
             <div className="modal-actions">
               <button
                 onClick={handleUpload}
@@ -710,14 +842,16 @@ const PhotoPortfolio = () => {
               {filteredPhotos[currentPhotoIndex].description && (
                 <p className="lightbox-description">{filteredPhotos[currentPhotoIndex].description}</p>
               )}
-              {/* {filteredPhotos[currentPhotoIndex].tags.length > 0 && (
+              {filteredPhotos[currentPhotoIndex].location && (
+                <p className="lightbox-location">📍 {filteredPhotos[currentPhotoIndex].location}</p>
+              )}
+              {filteredPhotos[currentPhotoIndex].tags.length > 0 && (
                 <div className="lightbox-tags">
                   {filteredPhotos[currentPhotoIndex].tags.map(tag => (
                     <span key={tag.id} className="lightbox-tag">{capitalize(tag.name)}</span>
                   ))}
                 </div>
-              )} */}
-              {/* Add location (country) */}
+              )}
             </div>
           </div>
         </div>

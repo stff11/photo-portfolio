@@ -319,6 +319,38 @@ input[type="file"] {
   margin-bottom: 1.5rem;
 }
 
+/* AI Toggle */
+.ai-toggle {
+  margin: 1rem 0;
+  padding: 1rem;
+  background-color: #f8f8f8;
+  border-radius: 4px;
+}
+
+.ai-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: #333;
+}
+
+.ai-toggle input[type="checkbox"] {
+  width: auto;
+  cursor: pointer;
+}
+
+.ai-toggle span {
+  font-size: 0.95rem;
+}
+
+.ai-warning {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #d97706;
+  font-style: italic;
+}
+
 /* File Upload List */
 .file-list {
   display: flex;
@@ -467,9 +499,15 @@ input[type="file"] {
   letter-spacing: 0.05em;
 }
 
+.lightbox-location {
+  font-size: 0.95rem;
+  opacity: 0.9;
+  margin-bottom: 0.75rem;
+  font-style: italic;
+}
+
 .lightbox-description {
   font-size: 1rem;
-  text-transform: capitalize;
   line-height: 1.6;
   opacity: 0.8;
   margin-bottom: 1rem;
