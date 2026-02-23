@@ -709,9 +709,9 @@ const PhotoPortfolio = () => {
             />
             
             <div className="lightbox-info">
-              {filteredPhotos[currentPhotoIndex].title && (
+              {/* {filteredPhotos[currentPhotoIndex].title && (
                 <h3 className="lightbox-title">{filteredPhotos[currentPhotoIndex].title}</h3>
-              )}
+              )} */}
               {filteredPhotos[currentPhotoIndex].description && (
                 <p className="lightbox-description">{filteredPhotos[currentPhotoIndex].description}</p>
               )}
