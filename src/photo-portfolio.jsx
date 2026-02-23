@@ -703,7 +703,7 @@ const PhotoPortfolio = () => {
           
           <div className="lightbox-content">
             <img
-              src={getFullUrl(filteredPhotos[currentPhotoIndex].url)}
+              src={getFullUrl(filteredPhotos[currentPhotoIndex].cloudinary_url)}
               alt={filteredPhotos[currentPhotoIndex].title}
               className="lightbox-image"
             />
