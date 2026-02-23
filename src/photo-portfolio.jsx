@@ -433,24 +433,19 @@ const PhotoPortfolio = () => {
 
   // Cloudinary URL builders
   const getThumbUrl = (url) => {
-    console.log('getThumbUrl input:', url);
-    if (!url) {
-      console.log('URL is null/undefined');
-      return '';
-    }
+    if (!url) return '';
     if (url.includes('/upload/')) {
-      const result = url.replace('/upload/', '/upload/w_600,h_600,c_fill,f_auto,q_auto/');
-      console.log('getThumbUrl output:', result);
-      return result;
+      // Higher quality thumbnails with better compression
+      return url.replace('/upload/', '/upload/w_800,h_800,c_limit,q_90,f_auto/');
     }
-    console.log('URL does not contain /upload/, returning original:', url);
     return url;
   };
 
   const getFullUrl = (url) => {
     if (!url) return '';
     if (url.includes('/upload/')) {
-      return url.replace('/upload/', '/upload/w_2000,f_auto,q_auto/');
+      // High quality for fullscreen: max 3000px width, quality 95, no aggressive compression
+      return url.replace('/upload/', '/upload/w_3000,q_95,f_auto/');
     }
     return url;
   };
@@ -715,13 +710,14 @@ const PhotoPortfolio = () => {
               {filteredPhotos[currentPhotoIndex].description && (
                 <p className="lightbox-description">{filteredPhotos[currentPhotoIndex].description}</p>
               )}
-              {filteredPhotos[currentPhotoIndex].tags.length > 0 && (
+              {/* {filteredPhotos[currentPhotoIndex].tags.length > 0 && (
                 <div className="lightbox-tags">
                   {filteredPhotos[currentPhotoIndex].tags.map(tag => (
                     <span key={tag.id} className="lightbox-tag">{capitalize(tag.name)}</span>
                   ))}
                 </div>
-              )}
+              )} */}
+              {/* Add location (country) */}
             </div>
           </div>
         </div>
