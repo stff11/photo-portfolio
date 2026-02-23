@@ -511,7 +511,7 @@ const PhotoPortfolio = () => {
           {filteredPhotos.map((photo, index) => (
             <div key={photo.id} className="photo-card" onClick={() => openLightbox(index)}>
               <img 
-                src={getThumbUrl(photo.url)} 
+                src={getThumbUrl(photo.cloudinary_url)} 
                 alt={photo.title || 'Portfolio photo'} 
               />
               {user && (
