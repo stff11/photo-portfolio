@@ -400,22 +400,22 @@ const PhotoPortfolio = () => {
     }
   };
 
-  const nextPhoto = () => {
+  const nextPhoto = useCallback(() => {
     setCurrentPhotoIndex((prev) => (prev + 1) % filteredPhotos.length);
-  };
+  }, [filteredPhotos.length]);
 
-  const prevPhoto = () => {
+  const prevPhoto = useCallback(() => {
     setCurrentPhotoIndex((prev) => (prev - 1 + filteredPhotos.length) % filteredPhotos.length);
-  };
+  }, [filteredPhotos.length]);
 
-  const closeLightbox = () => {
+  const closeLightbox = useCallback(() => {
     setShowLightbox(false);
     
     // Exit fullscreen
     if (document.fullscreenElement) {
       document.exitFullscreen();
     }
-  };
+  }, []);
 
   // Keyboard navigation
   useEffect(() => {
@@ -425,10 +425,9 @@ const PhotoPortfolio = () => {
       if (e.key === 'ArrowLeft') prevPhoto();
       if (e.key === 'Escape') closeLightbox();
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showLightbox, currentPhotoIndex, filteredPhotos.length]);
+  }, [showLightbox, nextPhoto, prevPhoto, closeLightbox]);
 
   // Cloudinary URL builders
   const getThumbUrl = (url) => {
