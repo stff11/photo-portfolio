@@ -14,6 +14,19 @@ const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET;
 // Delete from Cloudinary
 const deleteFromCloudinary = (publicId) => {
   return new Promise((resolve, reject) => {
+    // Debug logging
+    console.log('Cloudinary config:', {
+      cloudName: CLOUDINARY_CLOUD_NAME,
+      apiKey: CLOUDINARY_API_KEY ? 'SET' : 'MISSING',
+      apiSecret: CLOUDINARY_API_SECRET ? 'SET' : 'MISSING',
+      publicId
+    });
+
+    if (!CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+      reject(new Error('Cloudinary credentials not configured'));
+      return;
+    }
+
     const timestamp = Math.round(Date.now() / 1000);
     const signature = crypto
       .createHash('sha1')
@@ -41,9 +54,14 @@ const deleteFromCloudinary = (publicId) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
+        console.log('Cloudinary response:', res.statusCode, data);
         try {
           const result = JSON.parse(data);
-          resolve(result);
+          if (res.statusCode === 200) {
+            resolve(result);
+          } else {
+            reject(new Error(result.error?.message || 'Cloudinary deletion failed'));
+          }
         } catch (e) {
           reject(e);
         }
@@ -57,6 +75,8 @@ const deleteFromCloudinary = (publicId) => {
 };
 
 exports.handler = async (event) => {
+  console.log('Function called:', event.httpMethod);
+  
   if (event.httpMethod !== 'DELETE') {
     return {
       statusCode: 405,
@@ -66,6 +86,7 @@ exports.handler = async (event) => {
 
   try {
     const { id } = JSON.parse(event.body);
+    console.log('Photo ID:', id);
 
     if (!id) {
       return {
@@ -90,15 +111,25 @@ exports.handler = async (event) => {
       .eq('id', id)
       .single();
 
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      console.error('Supabase fetch error:', fetchError);
+      throw fetchError;
+    }
+
+    console.log('Photo found:', photo);
 
     // Delete from Cloudinary if we have the credentials
-    if (CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET && photo.cloudinary_public_id) {
+    if (photo.cloudinary_public_id) {
       try {
-        await deleteFromCloudinary(photo.cloudinary_public_id);
+        const cloudinaryResult = await deleteFromCloudinary(photo.cloudinary_public_id);
+        console.log('Cloudinary delete success:', cloudinaryResult);
       } catch (cloudinaryError) {
         console.error('Cloudinary deletion failed:', cloudinaryError);
-        // Continue anyway - at least delete from database
+        // Return the error to see what's happening
+        return {
+          statusCode: 500,
+          body: JSON.stringify({ error: cloudinaryError.message })
+        };
       }
     }
 
@@ -108,7 +139,10 @@ exports.handler = async (event) => {
       .delete()
       .eq('id', id);
 
-    if (deleteError) throw deleteError;
+    if (deleteError) {
+      console.error('Supabase delete error:', deleteError);
+      throw deleteError;
+    }
 
     return {
       statusCode: 200,
