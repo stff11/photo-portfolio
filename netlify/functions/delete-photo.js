@@ -3,8 +3,8 @@ const https = require('https');
 const crypto = require('crypto');
 
 const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://ygftopwtblcoxgzusywy.supabase.co',
-  process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnZnRvcHd0Ymxjb3hnenVzeXd5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczOTQ2MzUxNCwiZXhwIjoyMDU1MDM5NTE0fQ.vBXN36i42RU9dz5Bkv7TF81Sp0Wxx0-M_QCYUt1t7TI'
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
 );
 
 const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || 'dgsr2qkwp';
@@ -14,16 +14,9 @@ const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET;
 // Delete from Cloudinary
 const deleteFromCloudinary = (publicId) => {
   return new Promise((resolve, reject) => {
-    // Debug logging
-    console.log('Cloudinary config:', {
-      cloudName: CLOUDINARY_CLOUD_NAME,
-      apiKey: CLOUDINARY_API_KEY ? 'SET' : 'MISSING',
-      apiSecret: CLOUDINARY_API_SECRET ? 'SET' : 'MISSING',
-      publicId
-    });
-
     if (!CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
-      reject(new Error('Cloudinary credentials not configured'));
+      console.log('Cloudinary credentials not configured, skipping Cloudinary deletion');
+      resolve({ result: 'skipped' });
       return;
     }
 
@@ -54,12 +47,12 @@ const deleteFromCloudinary = (publicId) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        console.log('Cloudinary response:', res.statusCode, data);
         try {
           const result = JSON.parse(data);
           if (res.statusCode === 200) {
             resolve(result);
           } else {
+            console.error('Cloudinary error:', result);
             reject(new Error(result.error?.message || 'Cloudinary deletion failed'));
           }
         } catch (e) {
@@ -75,22 +68,26 @@ const deleteFromCloudinary = (publicId) => {
 };
 
 exports.handler = async (event) => {
-  console.log('Function called:', event.httpMethod);
-  
   if (event.httpMethod !== 'DELETE') {
     return {
       statusCode: 405,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: 'Method not allowed' })
     };
   }
 
   try {
-    const { id } = JSON.parse(event.body);
-    console.log('Photo ID:', id);
+    // Check if environment variables are set
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+      throw new Error('Supabase environment variables not configured');
+    }
+
+    const { id, cloudinary_public_id } = JSON.parse(event.body);
 
     if (!id) {
       return {
         statusCode: 400,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ error: 'Photo ID is required' })
       };
     }
@@ -100,36 +97,19 @@ exports.handler = async (event) => {
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return {
         statusCode: 401,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ error: 'Unauthorized' })
       };
     }
 
-    // Get photo details from Supabase
-    const { data: photo, error: fetchError } = await supabase
-      .from('photos')
-      .select('cloudinary_public_id')
-      .eq('id', id)
-      .single();
-
-    if (fetchError) {
-      console.error('Supabase fetch error:', fetchError);
-      throw fetchError;
-    }
-
-    console.log('Photo found:', photo);
-
-    // Delete from Cloudinary if we have the credentials
-    if (photo.cloudinary_public_id) {
+    // Delete from Cloudinary if public_id provided
+    if (cloudinary_public_id) {
       try {
-        const cloudinaryResult = await deleteFromCloudinary(photo.cloudinary_public_id);
-        console.log('Cloudinary delete success:', cloudinaryResult);
+        const cloudinaryResult = await deleteFromCloudinary(cloudinary_public_id);
+        console.log('Cloudinary delete result:', cloudinaryResult);
       } catch (cloudinaryError) {
         console.error('Cloudinary deletion failed:', cloudinaryError);
-        // Return the error to see what's happening
-        return {
-          statusCode: 500,
-          body: JSON.stringify({ error: cloudinaryError.message })
-        };
+        // Continue anyway - at least delete from database
       }
     }
 
@@ -139,19 +119,18 @@ exports.handler = async (event) => {
       .delete()
       .eq('id', id);
 
-    if (deleteError) {
-      console.error('Supabase delete error:', deleteError);
-      throw deleteError;
-    }
+    if (deleteError) throw deleteError;
 
     return {
       statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ success: true })
     };
   } catch (error) {
     console.error('Delete error:', error);
     return {
       statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: error.message })
     };
   }

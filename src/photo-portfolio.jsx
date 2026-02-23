@@ -21,6 +21,9 @@ const computeFileHash = async (file) => {
   return hashHex;
 };
 
+// Helper to capitalize first letter
+const capitalize = (str) => str.charAt(0).toUpperCase() + str.slice(1);
+
 const PhotoPortfolio = () => {
   const [photos, setPhotos] = useState([]);
   const [allTags, setAllTags] = useState([]);
@@ -33,7 +36,7 @@ const PhotoPortfolio = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [editingPhoto, setEditingPhoto] = useState(null);
-  const [uploadFiles, setUploadFiles] = useState([]); // Array of files with metadata
+  const [uploadFiles, setUploadFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
@@ -63,7 +66,6 @@ const PhotoPortfolio = () => {
       .order('created_at', { ascending: false });
 
     if (!error && data) {
-      // Process photos to include tags array and remove duplicates
       const uniquePhotos = {};
       data.forEach(photo => {
         if (!uniquePhotos[photo.id]) {
@@ -97,17 +99,20 @@ const PhotoPortfolio = () => {
       )
     : photos;
 
+  // Get photo count for each tag
+  const getTagCount = (tag) => {
+    if (!tag) return photos.length; // "All" count
+    return photos.filter(photo => 
+      photo.tags.some(t => t.id === tag.id)
+    ).length;
+  };
+
   // Auth handlers
   const handleLogin = async (e) => {
     e.preventDefault();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (!error) {
-      setShowLogin(false);
-      setEmail('');
-      setPassword('');
-    } else {
-      alert('Login failed: ' + error.message);
-    }
+    if (error) alert(error.message);
+    else setShowLogin(false);
   };
 
   const handleLogout = async () => {
@@ -117,8 +122,8 @@ const PhotoPortfolio = () => {
   // Tag filtering
   const toggleTag = (tag) => {
     setSelectedTags(prev => {
-      const exists = prev.find(t => t.id === tag.id);
-      if (exists) {
+      const isSelected = prev.some(t => t.id === tag.id);
+      if (isSelected) {
         return prev.filter(t => t.id !== tag.id);
       } else {
         return [...prev, tag];
@@ -126,18 +131,52 @@ const PhotoPortfolio = () => {
     });
   };
 
-  // Upload handlers
-  const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files || []);
-    addFilesToUpload(files);
+  const clearTags = () => {
+    setSelectedTags([]);
   };
 
+  // File handling
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    addFiles(files);
+  };
+
+  const addFiles = (files) => {
+    const newFiles = files.map(file => ({
+      file,
+      preview: URL.createObjectURL(file),
+      title: '',
+      description: '',
+      tags: '',
+      uploaded: false
+    }));
+    setUploadFiles(prev => [...prev, ...newFiles]);
+  };
+
+  const removeFile = (index) => {
+    setUploadFiles(prev => {
+      const newFiles = [...prev];
+      URL.revokeObjectURL(newFiles[index].preview);
+      newFiles.splice(index, 1);
+      return newFiles;
+    });
+  };
+
+  const updateFileMetadata = (index, field, value) => {
+    setUploadFiles(prev => {
+      const newFiles = [...prev];
+      newFiles[index][field] = value;
+      return newFiles;
+    });
+  };
+
+  // Drag and drop handlers
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
+    if (e.type === 'dragenter' || e.type === 'dragover') {
       setDragActive(true);
-    } else if (e.type === "dragleave") {
+    } else if (e.type === 'dragleave') {
       setDragActive(false);
     }
   };
@@ -147,150 +186,116 @@ const PhotoPortfolio = () => {
     e.stopPropagation();
     setDragActive(false);
     
-    const files = Array.from(e.dataTransfer.files || []).filter(file => 
-      file.type.startsWith('image/')
-    );
-    addFilesToUpload(files);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      addFiles(Array.from(e.dataTransfer.files));
+    }
   };
 
-  const addFilesToUpload = async (files) => {
-    const newFiles = await Promise.all(files.map(async (file) => ({
-      file,
-      preview: URL.createObjectURL(file),
-      title: file.name.replace(/\.[^/.]+$/, ''), // Remove extension
-      description: '',
-      tags: '',
-      uploaded: false,
-      fileHash: await computeFileHash(file) // Compute content hash
-    })));
-    setUploadFiles(prev => [...prev, ...newFiles]);
-    setShowUpload(true);
-  };
-
-  const updateFileMetadata = (index, field, value) => {
-    setUploadFiles(prev => prev.map((f, i) => 
-      i === index ? { ...f, [field]: value } : f
-    ));
-  };
-
-  const removeFile = (index) => {
-    setUploadFiles(prev => {
-      const file = prev[index];
-      URL.revokeObjectURL(file.preview);
-      return prev.filter((_, i) => i !== index);
-    });
-  };
-
-  const handleBulkUpload = async () => {
+  // Upload handler
+  const handleUpload = async () => {
+    if (uploadFiles.length === 0) return;
+    
     setUploading(true);
     
     for (let i = 0; i < uploadFiles.length; i++) {
       const fileData = uploadFiles[i];
       if (fileData.uploaded) continue;
-
+      
       try {
-        console.log('File hash:', fileData.fileHash);
+        // Compute file hash
+        const fileHash = await computeFileHash(fileData.file);
         
-        // Check if this file hash already exists in our database (BEFORE uploading to Cloudinary)
-        const { data: existingPhoto, error: checkError } = await supabase
+        // Check if photo with this hash already exists
+        const { data: existingPhoto } = await supabase
           .from('photos')
-          .select('id, title, file_hash')
-          .eq('file_hash', fileData.fileHash)
+          .select('id')
+          .eq('file_hash', fileHash)
           .maybeSingle();
         
-        console.log('Existing photo check:', existingPhoto);
-        
-        if (checkError) {
-          console.error('Error checking for duplicates:', checkError);
-        }
-        
         if (existingPhoto) {
-          // Photo already exists - skip it
-          console.log(`Duplicate detected: ${fileData.title} matches ${existingPhoto.title}`);
-          setUploadFiles(prev => prev.map((f, idx) => 
-            idx === i ? { ...f, uploaded: true, duplicate: true, duplicateTitle: existingPhoto.title } : f
-          ));
-          alert(`"${fileData.title}" is a duplicate of "${existingPhoto.title}" - skipped`);
+          alert(`Photo "${fileData.file.name}" already exists in the portfolio`);
           continue;
         }
-        
-        console.log('No duplicate found, uploading to Cloudinary...');
         
         // Upload to Cloudinary
         const formData = new FormData();
         formData.append('file', fileData.file);
         formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
         
-        const cloudinaryRes = await fetch(
+        const cloudinaryResponse = await fetch(
           `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-          { method: 'POST', body: formData }
+          {
+            method: 'POST',
+            body: formData
+          }
         );
         
-        const cloudinaryData = await cloudinaryRes.json();
+        if (!cloudinaryResponse.ok) {
+          throw new Error('Cloudinary upload failed');
+        }
         
-        console.log('Cloudinary upload complete:', cloudinaryData.public_id);
+        const cloudinaryData = await cloudinaryResponse.json();
         
         // Save to Supabase
-        const { data: photoData, error: photoError } = await supabase
+        const { data: photo, error } = await supabase
           .from('photos')
           .insert({
-            cloudinary_url: cloudinaryData.secure_url,
+            url: cloudinaryData.secure_url,
             cloudinary_public_id: cloudinaryData.public_id,
-            file_hash: fileData.fileHash,
-            title: fileData.title,
+            title: fileData.title || fileData.file.name,
             description: fileData.description,
-            width: cloudinaryData.width,
-            height: cloudinaryData.height
+            file_hash: fileHash
           })
           .select()
           .single();
-
-        if (photoError) throw photoError;
-
-        // Handle tags if provided
-        if (fileData.tags.trim()) {
-          const tagNames = fileData.tags.split(',').map(t => t.trim()).filter(Boolean);
-          for (const tagName of tagNames) {
-            const { data: existingTag } = await supabase
+        
+        if (error) throw error;
+        
+        // Handle tags
+        const tagNames = fileData.tags.split(',').map(t => t.trim()).filter(Boolean);
+        for (const tagName of tagNames) {
+          const { data: existingTag } = await supabase
+            .from('tags')
+            .select('id')
+            .eq('name', tagName)
+            .maybeSingle();
+          
+          let tagId;
+          if (existingTag) {
+            tagId = existingTag.id;
+          } else {
+            const { data: newTag } = await supabase
               .from('tags')
-              .select('id')
-              .eq('name', tagName)
-              .maybeSingle();
-
-            let tagId;
-            if (existingTag) {
-              tagId = existingTag.id;
-            } else {
-              const { data: newTag } = await supabase
-                .from('tags')
-                .insert({ name: tagName })
-                .select()
-                .single();
-              tagId = newTag.id;
-            }
-
-            await supabase
-              .from('photo_tags')
-              .insert({
-                photo_id: photoData.id,
-                tag_id: tagId
-              });
+              .insert({ name: tagName })
+              .select()
+              .single();
+            tagId = newTag.id;
           }
+          
+          await supabase
+            .from('photo_tags')
+            .insert({
+              photo_id: photo.id,
+              tag_id: tagId
+            });
         }
-
+        
         // Mark as uploaded
-        setUploadFiles(prev => prev.map((f, idx) => 
-          idx === i ? { ...f, uploaded: true } : f
-        ));
+        updateFileMetadata(i, 'uploaded', true);
+        
       } catch (error) {
-        alert(`Upload failed for ${fileData.title}: ${error.message}`);
+        alert(`Upload failed for ${fileData.file.name}: ${error.message}`);
+        console.error(error);
       }
     }
-
+    
     setUploading(false);
-    setShowUpload(false);
-    setUploadFiles([]);
     fetchPhotos();
+    
+    // Clear uploaded files
+    setTimeout(() => {
+      setUploadFiles(prev => prev.filter(f => !f.uploaded));
+    }, 1000);
   };
 
   // Delete photo
@@ -298,7 +303,6 @@ const PhotoPortfolio = () => {
     if (!window.confirm('Delete this photo?')) return;
 
     try {
-      // Get the user's session token
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
@@ -311,7 +315,6 @@ const PhotoPortfolio = () => {
         ? '/.netlify/functions/delete-photo'
         : '/api/delete-photo';
 
-      // Call backend API to delete from both Cloudinary and Supabase
       const response = await fetch(apiEndpoint, {
         method: 'DELETE',
         headers: {
@@ -319,7 +322,8 @@ const PhotoPortfolio = () => {
           'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({
-          id: photo.id
+          id: photo.id,
+          cloudinary_public_id: photo.cloudinary_public_id
         })
       });
 
@@ -342,7 +346,6 @@ const PhotoPortfolio = () => {
     if (!editingPhoto) return;
 
     try {
-      // Update photo metadata
       await supabase
         .from('photos')
         .update({
@@ -351,11 +354,8 @@ const PhotoPortfolio = () => {
         })
         .eq('id', editingPhoto.id);
 
-      // Update tags
-      // First, delete existing tags
       await supabase.from('photo_tags').delete().eq('photo_id', editingPhoto.id);
 
-      // Then add new tags
       const tagNames = editingPhoto.tags.split(',').map(t => t.trim()).filter(Boolean);
       for (const tagName of tagNames) {
         const { data: existingTag } = await supabase
@@ -396,7 +396,6 @@ const PhotoPortfolio = () => {
     setCurrentPhotoIndex(index);
     setShowLightbox(true);
     
-    // Request fullscreen
     if (document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen().catch(err => {
         console.log('Fullscreen request failed:', err);
@@ -415,7 +414,6 @@ const PhotoPortfolio = () => {
   const closeLightbox = useCallback(() => {
     setShowLightbox(false);
     
-    // Exit fullscreen
     if (document.fullscreenElement) {
       document.exitFullscreen();
     }
@@ -451,27 +449,18 @@ const PhotoPortfolio = () => {
           
           <div className="header-actions">
             {user && (
-              <button
-                onClick={() => setShowUpload(true)}
-                className="btn-primary"
-              >
-                + UPLOAD
+              <button className="btn-primary" onClick={() => setShowUpload(true)}>
+                Upload
               </button>
             )}
             
             {user ? (
-              <button
-                onClick={handleLogout}
-                className="btn-secondary"
-              >
+              <button className="btn-secondary" onClick={handleLogout}>
                 Logout
               </button>
             ) : (
-              <button
-                onClick={() => setShowLogin(true)}
-                className="btn-secondary"
-              >
-                Login
+              <button className="btn-secondary" onClick={() => setShowLogin(true)}>
+                Admin Login
               </button>
             )}
           </div>
@@ -483,143 +472,84 @@ const PhotoPortfolio = () => {
         <div className="tag-filter">
           <div className="tag-filter-content">
             <button
-              onClick={() => setSelectedTags([])}
               className={`tag-button ${selectedTags.length === 0 ? 'selected' : ''}`}
+              onClick={clearTags}
             >
-              All
+              All ({getTagCount()})
             </button>
-            {allTags.map(tag => {
-              const isSelected = selectedTags.some(t => t.id === tag.id);
-              return (
-                <button
-                  key={tag.id}
-                  onClick={() => toggleTag(tag)}
-                  className={`tag-button ${isSelected ? 'selected' : ''}`}
-                >
-                  {tag.name}
-                </button>
-              );
-            })}
+            {allTags.map(tag => (
+              <button
+                key={tag.id}
+                className={`tag-button ${selectedTags.some(t => t.id === tag.id) ? 'selected' : ''}`}
+                onClick={() => toggleTag(tag)}
+              >
+                {capitalize(tag.name)} ({getTagCount(tag)})
+              </button>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Masonry Gallery */}
-      <main className="gallery-container">
+      {/* Gallery */}
+      <div className="gallery-container">
         <div className="gallery-grid">
           {filteredPhotos.map((photo, index) => (
-            <div
-              key={photo.id}
-              className="photo-card"
-              onClick={() => openLightbox(index)}
-            >
-              <img
-                src={getThumbUrl(photo.cloudinary_url)}
-                alt={photo.title}
-                loading="lazy"
+            <div key={photo.id} className="photo-card" onClick={() => openLightbox(index)}>
+              <img 
+                src={getThumbUrl(photo.url)} 
+                alt={photo.title || 'Portfolio photo'} 
               />
-              
               {user && (
-                <div className="admin-controls" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => setEditingPhoto({
-                      ...photo,
-                      tags: photo.tags.map(t => t.name).join(', ')
-                    })}
+                <div className="admin-controls">
+                  <button 
                     className="admin-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingPhoto({
+                        ...photo,
+                        tags: photo.tags.map(t => t.name).join(', ')
+                      });
+                    }}
                   >
-                    ✏️
+                    Edit
                   </button>
-                  <button
-                    onClick={() => handleDelete(photo)}
+                  <button 
                     className="admin-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(photo);
+                    }}
                   >
-                    🗑️
+                    Delete
                   </button>
                 </div>
               )}
             </div>
           ))}
         </div>
-      </main>
+      </div>
 
       {/* Login Modal */}
       {showLogin && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 200,
-            backdropFilter: 'blur(5px)'
-          }}
-          onClick={() => setShowLogin(false)}
-        >
-          <div
-            style={{
-              backgroundColor: '#ffffff',
-              padding: '3rem',
-              borderRadius: '2px',
-              maxWidth: '400px',
-              width: '90%'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{
-              fontFamily: '"Cormorant Garamond", serif',
-              fontSize: '1.5rem',
-              marginBottom: '2rem',
-              fontWeight: 300,
-              letterSpacing: '0.05em',
-              color: '#000000'
-            }}>
-              Admin Login
-            </h2>
-            
-            <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div className="modal-overlay" onClick={() => setShowLogin(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2 className="modal-title">Admin Login</h2>
+            <form onSubmit={handleLogin} className="login-form">
               <input
                 type="email"
                 placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                style={{
-                  padding: '0.75rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '2px',
-                  fontFamily: 'inherit',
-                  fontSize: '1rem'
-                }}
+                required
               />
               <input
                 type="password"
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                style={{
-                  padding: '0.75rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '2px',
-                  fontFamily: 'inherit',
-                  fontSize: '1rem'
-                }}
+                required
               />
-              <button
-                type="submit"
-                style={{
-                  padding: '0.75rem',
-                  backgroundColor: '#000000',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '2px',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  fontSize: '1rem',
-                  letterSpacing: '0.05em'
-                }}
-              >
+              <button type="submit" className="btn-primary">
                 Login
               </button>
             </form>
@@ -629,344 +559,119 @@ const PhotoPortfolio = () => {
 
       {/* Upload Modal */}
       {showUpload && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 200,
-            backdropFilter: 'blur(5px)',
-            overflowY: 'auto',
-            padding: '2rem'
-          }}
-          onClick={() => {
-            if (!uploading) {
-              setShowUpload(false);
-              uploadFiles.forEach(f => URL.revokeObjectURL(f.preview));
-              setUploadFiles([]);
-            }
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: '#ffffff',
-              padding: '3rem',
-              borderRadius: '2px',
-              maxWidth: '900px',
-              width: '90%',
-              maxHeight: '90vh',
-              overflowY: 'auto'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{
-              fontFamily: '"Cormorant Garamond", serif',
-              fontSize: '1.5rem',
-              marginBottom: '2rem',
-              fontWeight: 300,
-              letterSpacing: '0.05em',
-              color: '#000000'
-            }}>
-              Upload Photos
-            </h2>
+        <div className="modal-overlay" onClick={() => setShowUpload(false)}>
+          <div className="modal-content wide" onClick={(e) => e.stopPropagation()}>
+            <h2 className="modal-title">Upload Photos</h2>
             
-            {/* Drag & Drop Zone */}
-            {uploadFiles.length === 0 && (
-              <div
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
-                style={{
-                  border: `2px dashed ${dragActive ? '#1a1a1a' : '#ddd'}`,
-                  borderRadius: '4px',
-                  padding: '3rem',
-                  textAlign: 'center',
-                  backgroundColor: dragActive ? 'rgba(0,0,0,0.02)' : 'transparent',
-                  transition: 'all 0.2s ease',
-                  marginBottom: '1.5rem'
-                }}
-              >
-                <p style={{ fontSize: '1.1rem', color: '#666', marginBottom: '1rem' }}>
-                  Drag & drop images here
-                </p>
-                <p style={{ fontSize: '0.9rem', color: '#999', marginBottom: '1.5rem' }}>
-                  or
-                </p>
-                <label style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#000000',
-                  color: '#ffffff',
-                  borderRadius: '2px',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  fontSize: '0.875rem',
-                  letterSpacing: '0.05em',
-                  display: 'inline-block'
-                }}>
-                  Browse Files
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleFileSelect}
-                    style={{ display: 'none' }}
-                  />
-                </label>
-              </div>
-            )}
-            
-            {/* File List */}
+            <div
+              className={`dropzone ${dragActive ? 'active' : ''}`}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+            >
+              <p className="dropzone-text">Drag & drop photos here</p>
+              <p className="dropzone-subtext">or</p>
+              <label className="btn-primary" style={{ display: 'inline-block', cursor: 'pointer' }}>
+                Choose Files
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  style={{ display: 'none' }}
+                />
+              </label>
+            </div>
+
             {uploadFiles.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div className="file-list">
                 {uploadFiles.map((fileData, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '150px 1fr',
-                      gap: '1rem',
-                      padding: '1rem',
-                      border: '1px solid #ddd',
-                      borderRadius: '4px',
-                      backgroundColor: fileData.uploaded ? '#f0f9f0' : 'white'
-                    }}
-                  >
-                    <img
-                      src={fileData.preview}
-                      alt={fileData.title}
-                      style={{
-                        width: '150px',
-                        height: '150px',
-                        objectFit: 'cover',
-                        borderRadius: '2px'
-                      }}
-                    />
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <input
-                          type="text"
-                          placeholder="Title"
-                          value={fileData.title}
-                          onChange={(e) => updateFileMetadata(index, 'title', e.target.value)}
-                          disabled={fileData.uploaded}
-                          style={{
-                            flex: 1,
-                            padding: '0.5rem',
-                            border: '1px solid #ddd',
-                            borderRadius: '2px',
-                            fontFamily: 'inherit',
-                            fontSize: '0.95rem',
-                            backgroundColor: fileData.uploaded ? '#f5f5f5' : 'white'
-                          }}
-                        />
-                        {!fileData.uploaded && (
+                  <div key={index} className={`file-upload-item ${fileData.uploaded ? 'uploaded' : ''}`}>
+                    <img src={fileData.preview} alt="Preview" className="file-preview" />
+                    <div className="file-metadata">
+                      <div className="file-header">
+                        <strong>{fileData.file.name}</strong>
+                        {fileData.uploaded ? (
+                          <span className="upload-success">✓</span>
+                        ) : (
                           <button
+                            type="button"
                             onClick={() => removeFile(index)}
-                            style={{
-                              marginLeft: '0.5rem',
-                              padding: '0.5rem',
-                              background: 'none',
-                              border: 'none',
-                              cursor: 'pointer',
-                              fontSize: '1.2rem',
-                              color: '#999'
-                            }}
+                            className="remove-btn"
                           >
-                            ✕
+                            ×
                           </button>
                         )}
-                        {fileData.uploaded && (
-                          <span style={{ marginLeft: '0.5rem', color: '#4caf50', fontSize: '1.2rem' }}>
-                            ✓
-                          </span>
-                        )}
                       </div>
-                      
-                      <textarea
-                        placeholder="Description (optional)"
-                        value={fileData.description}
-                        onChange={(e) => updateFileMetadata(index, 'description', e.target.value)}
-                        disabled={fileData.uploaded}
-                        rows={2}
-                        style={{
-                          padding: '0.5rem',
-                          border: '1px solid #ddd',
-                          borderRadius: '2px',
-                          fontFamily: 'inherit',
-                          fontSize: '0.9rem',
-                          resize: 'vertical',
-                          backgroundColor: fileData.uploaded ? '#f5f5f5' : 'white'
-                        }}
-                      />
-                      
                       <input
                         type="text"
-                        placeholder="Tags (comma-separated, optional)"
+                        placeholder="Title"
+                        value={fileData.title}
+                        onChange={(e) => updateFileMetadata(index, 'title', e.target.value)}
+                        disabled={fileData.uploaded}
+                      />
+                      <textarea
+                        placeholder="Description"
+                        value={fileData.description}
+                        onChange={(e) => updateFileMetadata(index, 'description', e.target.value)}
+                        rows={2}
+                        disabled={fileData.uploaded}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Tags (comma-separated)"
                         value={fileData.tags}
                         onChange={(e) => updateFileMetadata(index, 'tags', e.target.value)}
                         disabled={fileData.uploaded}
-                        style={{
-                          padding: '0.5rem',
-                          border: '1px solid #ddd',
-                          borderRadius: '2px',
-                          fontFamily: 'inherit',
-                          fontSize: '0.9rem',
-                          backgroundColor: fileData.uploaded ? '#f5f5f5' : 'white'
-                        }}
                       />
                     </div>
                   </div>
                 ))}
-                
-                {/* Add More Button */}
-                {!uploading && (
-                  <label style={{
-                    padding: '0.75rem',
-                    backgroundColor: 'white',
-                    border: '2px dashed #ddd',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                    color: '#666',
-                    fontSize: '0.9rem',
-                    display: 'block'
-                  }}>
-                    + Add More Photos
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handleFileSelect}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
-                )}
-                
-                {/* Upload Button */}
-                <button
-                  onClick={handleBulkUpload}
-                  disabled={uploading || uploadFiles.every(f => f.uploaded)}
-                  style={{
-                    padding: '0.75rem',
-                    backgroundColor: (uploading || uploadFiles.every(f => f.uploaded)) ? '#ccc' : '#000000',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '2px',
-                    cursor: (uploading || uploadFiles.every(f => f.uploaded)) ? 'not-allowed' : 'pointer',
-                    fontFamily: 'inherit',
-                    fontSize: '1rem',
-                    letterSpacing: '0.05em'
-                  }}
-                >
-                  {uploading ? `Uploading... (${uploadFiles.filter(f => f.uploaded).length}/${uploadFiles.length})` : 
-                   uploadFiles.every(f => f.uploaded) ? 'All Uploaded!' : 
-                   `Upload ${uploadFiles.length} Photo${uploadFiles.length > 1 ? 's' : ''}`}
-                </button>
               </div>
             )}
+
+            <div className="modal-actions">
+              <button
+                onClick={handleUpload}
+                disabled={uploadFiles.length === 0 || uploading}
+                className={`btn-primary ${(uploadFiles.length === 0 || uploading) ? 'btn-disabled' : ''}`}
+              >
+                {uploading ? 'Uploading...' : 'Upload All'}
+              </button>
+              <button onClick={() => setShowUpload(false)} className="btn-secondary">
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* Edit Modal */}
       {editingPhoto && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 200,
-            backdropFilter: 'blur(5px)'
-          }}
-          onClick={() => setEditingPhoto(null)}
-        >
-          <div
-            style={{
-              backgroundColor: '#ffffff',
-              padding: '3rem',
-              borderRadius: '2px',
-              maxWidth: '600px',
-              width: '90%'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{
-              fontFamily: '"Cormorant Garamond", serif',
-              fontSize: '1.5rem',
-              marginBottom: '2rem',
-              fontWeight: 300,
-              letterSpacing: '0.05em',
-              color: '#000000'
-            }}>
-              Edit Photo
-            </h2>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div className="modal-overlay" onClick={() => setEditingPhoto(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2 className="modal-title">Edit Photo</h2>
+            <div className="edit-form">
               <input
                 type="text"
                 placeholder="Title"
                 value={editingPhoto.title}
-                onChange={(e) => setEditingPhoto(prev => ({ ...prev, title: e.target.value }))}
-                style={{
-                  padding: '0.75rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '2px',
-                  fontFamily: 'inherit',
-                  fontSize: '1rem'
-                }}
+                onChange={(e) => setEditingPhoto({...editingPhoto, title: e.target.value})}
               />
-              
               <textarea
                 placeholder="Description"
                 value={editingPhoto.description}
-                onChange={(e) => setEditingPhoto(prev => ({ ...prev, description: e.target.value }))}
-                rows={3}
-                style={{
-                  padding: '0.75rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '2px',
-                  fontFamily: 'inherit',
-                  fontSize: '1rem',
-                  resize: 'vertical'
-                }}
+                onChange={(e) => setEditingPhoto({...editingPhoto, description: e.target.value})}
+                rows={4}
               />
-              
               <input
                 type="text"
                 placeholder="Tags (comma-separated)"
                 value={editingPhoto.tags}
-                onChange={(e) => setEditingPhoto(prev => ({ ...prev, tags: e.target.value }))}
-                style={{
-                  padding: '0.75rem',
-                  border: '1px solid #ddd',
-                  borderRadius: '2px',
-                  fontFamily: 'inherit',
-                  fontSize: '1rem'
-                }}
+                onChange={(e) => setEditingPhoto({...editingPhoto, tags: e.target.value})}
               />
-              
-              <button
-                onClick={handleEdit}
-                style={{
-                  padding: '0.75rem',
-                  backgroundColor: '#000000',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '2px',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  fontSize: '1rem',
-                  letterSpacing: '0.05em'
-                }}
-              >
+              <button onClick={handleEdit} className="btn-primary">
                 Save Changes
               </button>
             </div>
@@ -974,63 +679,31 @@ const PhotoPortfolio = () => {
         </div>
       )}
 
-      {/* Lightbox/Slideshow */}
+      {/* Lightbox */}
       {showLightbox && filteredPhotos[currentPhotoIndex] && (
-        <div
-          className="modal-overlay lightbox"
-          onClick={closeLightbox}
-        >
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              prevPhoto();
-            }}
-            className="lightbox-nav prev"
-          >
-            ←
-          </button>
+        <div className="modal-overlay lightbox">
+          <button className="lightbox-close" onClick={closeLightbox}>×</button>
+          <button className="lightbox-nav prev" onClick={prevPhoto}>‹</button>
+          <button className="lightbox-nav next" onClick={nextPhoto}>›</button>
           
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              nextPhoto();
-            }}
-            className="lightbox-nav next"
-          >
-            →
-          </button>
-          
-          <button
-            onClick={closeLightbox}
-            className="lightbox-close"
-          >
-            ✕
-          </button>
-          
-          <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+          <div className="lightbox-content">
             <img
-              src={getFullUrl(filteredPhotos[currentPhotoIndex].cloudinary_url)}
+              src={getFullUrl(filteredPhotos[currentPhotoIndex].url)}
               alt={filteredPhotos[currentPhotoIndex].title}
               className="lightbox-image"
             />
             
             <div className="lightbox-info">
-              <h3 className="lightbox-title">
-                {filteredPhotos[currentPhotoIndex].title}
-              </h3>
-              
-              {filteredPhotos[currentPhotoIndex].description && (
-                <p className="lightbox-description">
-                  {filteredPhotos[currentPhotoIndex].description}
-                </p>
+              {filteredPhotos[currentPhotoIndex].title && (
+                <h3 className="lightbox-title">{filteredPhotos[currentPhotoIndex].title}</h3>
               )}
-              
+              {filteredPhotos[currentPhotoIndex].description && (
+                <p className="lightbox-description">{filteredPhotos[currentPhotoIndex].description}</p>
+              )}
               {filteredPhotos[currentPhotoIndex].tags.length > 0 && (
                 <div className="lightbox-tags">
                   {filteredPhotos[currentPhotoIndex].tags.map(tag => (
-                    <span key={tag.id} className="lightbox-tag">
-                      {tag.name}
-                    </span>
+                    <span key={tag.id} className="lightbox-tag">{capitalize(tag.name)}</span>
                   ))}
                 </div>
               )}
