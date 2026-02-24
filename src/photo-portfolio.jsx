@@ -325,6 +325,13 @@ const PhotoPortfolio = () => {
         const formData = new FormData();
         formData.append('file', fileData.file);
         formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+        console.log('Uploading to Cloudinary:', {
+          cloudName: CLOUDINARY_CLOUD_NAME,
+          preset: CLOUDINARY_UPLOAD_PRESET,
+          fileName: fileData.file.name
+        });
+        
         formData.append('quality', 'auto:best'); // Force best quality
         formData.append('resource_type', 'image');
         
@@ -358,20 +365,8 @@ const PhotoPortfolio = () => {
         
         if (error) throw error;
         
-        // Handle tags - combine manual tags with AI-generated tags if enabled
+        // Handle tags
         let allTags = fileData.tags;
-        
-        // if (useAITags) {
-        //   const aiTags = await generateAITags(fileData.file, true);
-        //   if (aiTags) {
-        //     // Combine and deduplicate tags
-        //     const existingTags = allTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-        //     const newTags = aiTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-        //     const combined = [...new Set([...existingTags, ...newTags])];
-        //     allTags = combined.join(', ');
-        //     console.log('Combined tags:', allTags);
-        //   }
-        // }
         
         const tagNames = allTags.split(',').map(t => t.trim()).filter(Boolean);
         for (const tagName of tagNames) {
@@ -759,7 +754,7 @@ const PhotoPortfolio = () => {
               </div>
             )}
 
-            <div className="ai-toggle">
+            {/* <div className="ai-toggle">
               <label>
                 <input
                   type="checkbox"
@@ -771,7 +766,7 @@ const PhotoPortfolio = () => {
               {useAITags && !process.env.REACT_APP_ANTHROPIC_API_KEY && (
                 <p className="ai-warning">⚠️ Set REACT_APP_ANTHROPIC_API_KEY environment variable to use AI tagging</p>
               )}
-            </div>
+            </div> */}
 
             <div className="modal-actions">
               <button
