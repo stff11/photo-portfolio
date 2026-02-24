@@ -99,7 +99,6 @@ const capitalize = (str) => str.charAt(0).toUpperCase() + str.slice(1);
 const PhotoPortfolio = () => {
   const [photos, setPhotos] = useState([]);
   const [allTags, setAllTags] = useState([]);
-  const [selectedTags, setSelectedTags] = useState([]);
   const [user, setUser] = useState(null);
   const [showLogin, setShowLogin] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -113,6 +112,8 @@ const PhotoPortfolio = () => {
   const [dragActive, setDragActive] = useState(false);
   const [useAITags, setUseAITags] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Check auth state
   useEffect(() => {
@@ -164,21 +165,73 @@ const PhotoPortfolio = () => {
     fetchPhotos();
   }, [fetchPhotos]);
 
-  // Filter photos by selected tags
-  const filteredPhotos = selectedTags.length > 0
-    ? photos.filter(photo => 
-        selectedTags.every(selectedTag => 
-          photo.tags.some(tag => tag.id === selectedTag.id)
-        )
-      )
-    : photos;
+  // Get all unique locations
+  const allLocations = [...new Set(photos.map(p => p.location).filter(Boolean))];
 
-  // Get photo count for each tag
-  const getTagCount = (tag) => {
-    if (!tag) return photos.length; // "All" count
-    return photos.filter(photo => 
-      photo.tags.some(t => t.id === tag.id)
-    ).length;
+  // Filter photos by search query (tags OR locations)
+  const filteredPhotos = photos.filter(photo => {
+    if (!searchQuery) return true;
+    
+    const query = searchQuery.toLowerCase();
+    
+    // Check if any tag matches
+    const tagMatch = photo.tags.some(tag => 
+      tag.name.toLowerCase().includes(query)
+    );
+    
+    // Check if location matches
+    const locationMatch = photo.location && 
+      photo.location.toLowerCase().includes(query);
+    
+    return tagMatch || locationMatch;
+  });
+
+  // Get matching suggestions based on search query
+  const getSuggestions = () => {
+    if (!searchQuery || searchQuery.length < 2) return [];
+    
+    const query = searchQuery.toLowerCase();
+    const suggestions = [];
+    
+    // Add matching tags
+    allTags.forEach(tag => {
+      if (tag.name.toLowerCase().includes(query)) {
+        const count = photos.filter(p => 
+          p.tags.some(t => t.id === tag.id)
+        ).length;
+        suggestions.push({
+          type: 'tag',
+          label: capitalize(tag.name),
+          value: tag.name,
+          count
+        });
+      }
+    });
+    
+    // Add matching locations
+    allLocations.forEach(location => {
+      if (location.toLowerCase().includes(query)) {
+        const count = photos.filter(p => p.location === location).length;
+        suggestions.push({
+          type: 'location',
+          label: location,
+          value: location,
+          count
+        });
+      }
+    });
+    
+    return suggestions.slice(0, 8); // Limit to 8 suggestions
+  };
+
+  const handleSearchSelect = (suggestion) => {
+    setSearchQuery(suggestion.value);
+    setShowSuggestions(false);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setShowSuggestions(false);
   };
 
   // Auth handlers
@@ -194,21 +247,6 @@ const PhotoPortfolio = () => {
   };
 
   // Tag filtering
-  const toggleTag = (tag) => {
-    setSelectedTags(prev => {
-      const isSelected = prev.some(t => t.id === tag.id);
-      if (isSelected) {
-        return prev.filter(t => t.id !== tag.id);
-      } else {
-        return [...prev, tag];
-      }
-    });
-  };
-
-  const clearTags = () => {
-    setSelectedTags([]);
-  };
-
   // File handling
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files);
@@ -576,28 +614,59 @@ const PhotoPortfolio = () => {
         </div>
       </header>
 
-      {/* Tag Filter Bar */}
-      {allTags.length > 0 && (
-        <div className="tag-filter">
-          <div className="tag-filter-content">
-            <button
-              className={`tag-button ${selectedTags.length === 0 ? 'selected' : ''}`}
-              onClick={clearTags}
-            >
-              All ({getTagCount()})
-            </button>
-            {allTags.map(tag => (
-              <button
-                key={tag.id}
-                className={`tag-button ${selectedTags.some(t => t.id === tag.id) ? 'selected' : ''}`}
-                onClick={() => toggleTag(tag)}
+      {/* Search Bar */}
+      <div className="search-bar">
+        <div className="search-container">
+          <div className="search-input-wrapper">
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search by category or location..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+            />
+            {searchQuery && (
+              <button 
+                className="search-clear"
+                onClick={clearSearch}
+                aria-label="Clear search"
               >
-                {capitalize(tag.name)} ({getTagCount(tag)})
+                ×
               </button>
-            ))}
+            )}
           </div>
+          
+          {/* Suggestions Dropdown */}
+          {showSuggestions && getSuggestions().length > 0 && (
+            <div className="search-suggestions">
+              {getSuggestions().map((suggestion, index) => (
+                <div
+                  key={index}
+                  className="suggestion-item"
+                  onClick={() => handleSearchSelect(suggestion)}
+                >
+                  <span className="suggestion-icon">
+                    {suggestion.type === 'tag' ? '🏷️' : '📍'}
+                  </span>
+                  <span className="suggestion-label">{suggestion.label}</span>
+                  <span className="suggestion-count">({suggestion.count})</span>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {searchQuery && (
+            <div className="search-results-info">
+              Showing {filteredPhotos.length} of {photos.length} photos
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Gallery */}
       <div className="gallery-container">
