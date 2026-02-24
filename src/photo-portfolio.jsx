@@ -114,6 +114,7 @@ const PhotoPortfolio = () => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedFilters, setSelectedFilters] = useState([]); // Array of {type, value, label}
 
   // Check auth state
   useEffect(() => {
@@ -168,22 +169,23 @@ const PhotoPortfolio = () => {
   // Get all unique locations
   const allLocations = [...new Set(photos.map(p => p.location).filter(Boolean))];
 
-  // Filter photos by search query (tags OR locations)
+  // Filter photos by selected filters (AND logic - must match all selected filters)
   const filteredPhotos = photos.filter(photo => {
-    if (!searchQuery) return true;
+    if (selectedFilters.length === 0) return true;
     
-    const query = searchQuery.toLowerCase();
-    
-    // Check if any tag matches
-    const tagMatch = photo.tags.some(tag => 
-      tag.name.toLowerCase().includes(query)
-    );
-    
-    // Check if location matches
-    const locationMatch = photo.location && 
-      photo.location.toLowerCase().includes(query);
-    
-    return tagMatch || locationMatch;
+    return selectedFilters.every(filter => {
+      if (filter.type === 'tag') {
+        // Check if photo has this tag
+        return photo.tags.some(tag => 
+          tag.name.toLowerCase() === filter.value.toLowerCase()
+        );
+      } else if (filter.type === 'location') {
+        // Check if photo has this location
+        return photo.location && 
+          photo.location.toLowerCase() === filter.value.toLowerCase();
+      }
+      return false;
+    });
   });
 
   // Get matching suggestions based on search query
@@ -193,9 +195,13 @@ const PhotoPortfolio = () => {
     const query = searchQuery.toLowerCase();
     const suggestions = [];
     
-    // Add matching tags
+    // Add matching tags (exclude already selected)
     allTags.forEach(tag => {
-      if (tag.name.toLowerCase().includes(query)) {
+      const alreadySelected = selectedFilters.some(f => 
+        f.type === 'tag' && f.value.toLowerCase() === tag.name.toLowerCase()
+      );
+      
+      if (!alreadySelected && tag.name.toLowerCase().includes(query)) {
         const count = photos.filter(p => 
           p.tags.some(t => t.id === tag.id)
         ).length;
@@ -208,9 +214,13 @@ const PhotoPortfolio = () => {
       }
     });
     
-    // Add matching locations
+    // Add matching locations (exclude already selected)
     allLocations.forEach(location => {
-      if (location.toLowerCase().includes(query)) {
+      const alreadySelected = selectedFilters.some(f => 
+        f.type === 'location' && f.value.toLowerCase() === location.toLowerCase()
+      );
+      
+      if (!alreadySelected && location.toLowerCase().includes(query)) {
         const count = photos.filter(p => p.location === location).length;
         suggestions.push({
           type: 'location',
@@ -225,13 +235,19 @@ const PhotoPortfolio = () => {
   };
 
   const handleSearchSelect = (suggestion) => {
-    setSearchQuery(suggestion.value);
+    // Add to selected filters
+    setSelectedFilters(prev => [...prev, suggestion]);
+    setSearchQuery('');
     setShowSuggestions(false);
   };
 
-  const clearSearch = () => {
+  const removeFilter = (index) => {
+    setSelectedFilters(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const clearAllFilters = () => {
+    setSelectedFilters([]);
     setSearchQuery('');
-    setShowSuggestions(false);
   };
 
   // Auth handlers
@@ -617,11 +633,38 @@ const PhotoPortfolio = () => {
       {/* Search Bar */}
       <div className="search-bar">
         <div className="search-container">
+          {/* Selected Filters as Chips */}
+          {selectedFilters.length > 0 && (
+            <div className="filter-chips">
+              {selectedFilters.map((filter, index) => (
+                <div key={index} className="filter-chip">
+                  <span className="chip-icon">
+                    {filter.type === 'tag' ? '🏷️' : '📍'}
+                  </span>
+                  <span className="chip-label">{filter.label}</span>
+                  <button 
+                    className="chip-remove"
+                    onClick={() => removeFilter(index)}
+                    aria-label="Remove filter"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button 
+                className="clear-all-btn"
+                onClick={clearAllFilters}
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+          
           <div className="search-input-wrapper">
             <input
               type="text"
               className="search-input"
-              placeholder="Search by category or location..."
+              placeholder={selectedFilters.length > 0 ? "Add another category or location..." : "Search by category or location..."}
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -629,12 +672,18 @@ const PhotoPortfolio = () => {
               }}
               onFocus={() => setShowSuggestions(true)}
               onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setSearchQuery('');
+                  setShowSuggestions(false);
+                }
+              }}
             />
             {searchQuery && (
               <button 
                 className="search-clear"
-                onClick={clearSearch}
-                aria-label="Clear search"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search input"
               >
                 ×
               </button>
@@ -660,7 +709,7 @@ const PhotoPortfolio = () => {
             </div>
           )}
           
-          {searchQuery && (
+          {selectedFilters.length > 0 && (
             <div className="search-results-info">
               Showing {filteredPhotos.length} of {photos.length} photos
             </div>

@@ -120,6 +120,72 @@ button {
   position: relative;
 }
 
+/* Filter Chips */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  color: #ffffff;
+  font-size: 0.9rem;
+}
+
+.chip-icon {
+  font-size: 1rem;
+}
+
+.chip-label {
+  font-weight: 500;
+}
+
+.chip-remove {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 0.25rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.chip-remove:hover {
+  color: #ffffff;
+}
+
+.clear-all-btn {
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clear-all-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
 .search-input-wrapper {
   position: relative;
   display: flex;
