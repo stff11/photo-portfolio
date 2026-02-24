@@ -168,6 +168,16 @@ const PhotoPortfolio = () => {
 
   // Get all unique locations
   const allLocations = [...new Set(photos.map(p => p.location).filter(Boolean))];
+  
+  // Extract unique countries from locations (text after last comma)
+  const allCountries = [...new Set(
+    allLocations
+      .map(loc => {
+        const parts = loc.split(',').map(p => p.trim());
+        return parts[parts.length - 1]; // Get last part (country)
+      })
+      .filter(Boolean)
+  )];
 
   // Filter photos by selected filters (AND logic - must match all selected filters)
   const filteredPhotos = photos.filter(photo => {
@@ -175,14 +185,14 @@ const PhotoPortfolio = () => {
     
     return selectedFilters.every(filter => {
       if (filter.type === 'tag') {
-        // Check if photo has this tag
+        // Check if photo has this tag (exact match)
         return photo.tags.some(tag => 
           tag.name.toLowerCase() === filter.value.toLowerCase()
         );
       } else if (filter.type === 'location') {
-        // Check if photo has this location
+        // Check if photo location contains this text (partial match)
         return photo.location && 
-          photo.location.toLowerCase() === filter.value.toLowerCase();
+          photo.location.toLowerCase().includes(filter.value.toLowerCase());
       }
       return false;
     });
@@ -214,20 +224,50 @@ const PhotoPortfolio = () => {
       }
     });
     
-    // Add matching locations (exclude already selected)
+    // Add matching countries (exclude already selected)
+    allCountries.forEach(country => {
+      const alreadySelected = selectedFilters.some(f => 
+        f.type === 'location' && f.value.toLowerCase() === country.toLowerCase()
+      );
+      
+      if (!alreadySelected && country.toLowerCase().includes(query)) {
+        // Count photos from this country
+        const count = photos.filter(p => 
+          p.location && p.location.toLowerCase().includes(country.toLowerCase())
+        ).length;
+        suggestions.push({
+          type: 'location',
+          label: country,
+          value: country,
+          count
+        });
+      }
+    });
+    
+    // Add matching specific locations (cities) - only if no country matches yet
     allLocations.forEach(location => {
       const alreadySelected = selectedFilters.some(f => 
-        f.type === 'location' && f.value.toLowerCase() === location.toLowerCase()
+        f.type === 'location' && location.toLowerCase().includes(f.value.toLowerCase())
       );
       
       if (!alreadySelected && location.toLowerCase().includes(query)) {
-        const count = photos.filter(p => p.location === location).length;
-        suggestions.push({
-          type: 'location',
-          label: location,
-          value: location,
-          count
-        });
+        const count = photos.filter(p => 
+          p.location && p.location.toLowerCase().includes(location.toLowerCase())
+        ).length;
+        
+        // Only add if not already covered by country
+        const isDuplicate = suggestions.some(s => 
+          s.type === 'location' && location.includes(s.value)
+        );
+        
+        if (!isDuplicate) {
+          suggestions.push({
+            type: 'location',
+            label: location,
+            value: location,
+            count
+          });
+        }
       }
     });
     
