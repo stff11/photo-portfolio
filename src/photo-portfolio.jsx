@@ -112,6 +112,7 @@ const PhotoPortfolio = () => {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [useAITags, setUseAITags] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   // Check auth state
   useEffect(() => {
@@ -493,6 +494,7 @@ const PhotoPortfolio = () => {
   const openLightbox = (index) => {
     setCurrentPhotoIndex(index);
     setShowLightbox(true);
+    setImageLoaded(false);
     
     if (document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen().catch(err => {
@@ -502,10 +504,12 @@ const PhotoPortfolio = () => {
   };
 
   const nextPhoto = useCallback(() => {
+    setImageLoaded(false);
     setCurrentPhotoIndex((prev) => (prev + 1) % filteredPhotos.length);
   }, [filteredPhotos.length]);
 
   const prevPhoto = useCallback(() => {
+    setImageLoaded(false);
     setCurrentPhotoIndex((prev) => (prev - 1 + filteredPhotos.length) % filteredPhotos.length);
   }, [filteredPhotos.length]);
 
@@ -604,6 +608,19 @@ const PhotoPortfolio = () => {
                 src={getThumbUrl(photo.cloudinary_url)} 
                 alt={photo.title || 'Portfolio photo'} 
               />
+              
+              {/* Thumbnail overlay with location and description */}
+              {(photo.location || photo.description) && (
+                <div className="photo-overlay">
+                  {photo.location && (
+                    <p className="photo-location">📍 {photo.location}</p>
+                  )}
+                  {photo.description && (
+                    <p className="photo-description">{photo.description}</p>
+                  )}
+                </div>
+              )}
+              
               {user && (
                 <div className="admin-controls">
                   <button 
@@ -810,26 +827,31 @@ const PhotoPortfolio = () => {
               src={getFullUrl(filteredPhotos[currentPhotoIndex].cloudinary_url)}
               alt={filteredPhotos[currentPhotoIndex].title}
               className="lightbox-image"
+              onLoad={() => setImageLoaded(true)}
+              style={{ opacity: imageLoaded ? 1 : 0.3, transition: 'opacity 0.3s ease' }}
             />
             
-            <div className="lightbox-info">
-              {/* {filteredPhotos[currentPhotoIndex].title && (
-                <h3 className="lightbox-title">{filteredPhotos[currentPhotoIndex].title}</h3>
-              )} */}
-              {filteredPhotos[currentPhotoIndex].description && (
-                <p className="lightbox-description">{filteredPhotos[currentPhotoIndex].description}</p>
-              )}
-              {filteredPhotos[currentPhotoIndex].location && (
-                <p className="lightbox-location">📍 {filteredPhotos[currentPhotoIndex].location}</p>
-              )}
-              {filteredPhotos[currentPhotoIndex].tags.length > 0 && (
-                <div className="lightbox-tags">
-                  {filteredPhotos[currentPhotoIndex].tags.map(tag => (
-                    <span key={tag.id} className="lightbox-tag">{capitalize(tag.name)}</span>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Only show info when image is loaded */}
+            {imageLoaded && (
+              <div className="lightbox-info">
+                {/* {filteredPhotos[currentPhotoIndex].title && (
+                  <h3 className="lightbox-title">{filteredPhotos[currentPhotoIndex].title}</h3>
+                )} */}
+                {filteredPhotos[currentPhotoIndex].description && (
+                  <p className="lightbox-description">{filteredPhotos[currentPhotoIndex].description}</p>
+                )}
+                {filteredPhotos[currentPhotoIndex].location && (
+                  <p className="lightbox-location">📍 {filteredPhotos[currentPhotoIndex].location}</p>
+                )}
+                {filteredPhotos[currentPhotoIndex].tags.length > 0 && (
+                  <div className="lightbox-tags">
+                    {filteredPhotos[currentPhotoIndex].tags.map(tag => (
+                      <span key={tag.id} className="lightbox-tag">{capitalize(tag.name)}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
