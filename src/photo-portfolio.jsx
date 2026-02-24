@@ -73,36 +73,18 @@ const extractExifKeywords = async (file) => {
 // Reverse geocode coordinates to location name
 const reverseGeocode = async (latitude, longitude) => {
   try {
-    // Using Nominatim (OpenStreetMap) - free, no API key needed
-    // Add delay to respect rate limits
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+    // Use our serverless function to avoid CORS issues
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
-      {
-        headers: {
-          'User-Agent': 'PhotoPortfolio/1.0'
-        }
-      }
+      `/.netlify/functions/geocode?lat=${latitude}&lon=${longitude}`
     );
     
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.error('Geocoding failed:', response.status);
+      return null;
+    }
     
     const data = await response.json();
-    const address = data.address;
-    
-    // Build location string: "City, Country" or "State, Country"
-    const parts = [];
-    
-    if (address.city) parts.push(address.city);
-    else if (address.town) parts.push(address.town);
-    else if (address.village) parts.push(address.village);
-    else if (address.county) parts.push(address.county);
-    else if (address.state) parts.push(address.state);
-    
-    if (address.country) parts.push(address.country);
-    
-    const locationString = parts.join(', ') || null;
+    const locationString = data.location;
     console.log('Location found:', locationString);
     return locationString;
   } catch (error) {
@@ -331,7 +313,7 @@ const PhotoPortfolio = () => {
           preset: CLOUDINARY_UPLOAD_PRESET,
           fileName: fileData.file.name
         });
-        
+
         formData.append('quality', 'auto:best'); // Force best quality
         formData.append('resource_type', 'image');
         
