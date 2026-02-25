@@ -42,6 +42,30 @@ const extractLocation = async (file) => {
   }
 };
 
+// Extract photo taken date from EXIF data
+const extractPhotoDate = async (file) => {
+  try {
+    const exifData = await exifr.parse(file, { 
+      pick: ['DateTimeOriginal', 'CreateDate', 'DateTime'] 
+    });
+    
+    // Try different date fields in order of preference
+    const photoDate = exifData?.DateTimeOriginal || 
+                     exifData?.CreateDate || 
+                     exifData?.DateTime;
+    
+    if (photoDate) {
+      console.log('Photo taken date found:', photoDate);
+      return photoDate;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error extracting photo date:', error);
+    return null;
+  }
+};
+
 // Extract keywords/tags from EXIF data
 const extractExifKeywords = async (file) => {
   try {
@@ -115,6 +139,7 @@ const PhotoPortfolio = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState([]); // Array of {type, value, label}
+  const [sortOrder, setSortOrder] = useState('date-taken'); // 'date-taken', 'date-added', 'random', 'location'
 
   // Check auth state
   useEffect(() => {
@@ -196,6 +221,34 @@ const PhotoPortfolio = () => {
       }
       return false;
     });
+  });
+
+  // Sort filtered photos based on selected sort order
+  const sortedPhotos = [...filteredPhotos].sort((a, b) => {
+    switch (sortOrder) {
+      case 'date-taken':
+        // Sort by photo_date (newest first), fall back to created_at
+        const dateA = a.photo_date ? new Date(a.photo_date) : new Date(a.created_at);
+        const dateB = b.photo_date ? new Date(b.photo_date) : new Date(b.created_at);
+        return dateB - dateA;
+      
+      case 'date-added':
+        // Sort by created_at (when added to portfolio)
+        return new Date(b.created_at) - new Date(a.created_at);
+      
+      case 'location':
+        // Sort alphabetically by location
+        const locA = a.location || 'zzz';
+        const locB = b.location || 'zzz';
+        return locA.localeCompare(locB);
+      
+      case 'random':
+        // Random sort (using a consistent seed based on photo IDs)
+        return Math.random() - 0.5;
+      
+      default:
+        return 0;
+    }
   });
 
   // Get matching suggestions based on search query
@@ -386,6 +439,10 @@ const PhotoPortfolio = () => {
         const location = await extractLocation(fileData.file);
         console.log('Extracted location for', fileData.file.name, ':', location);
         
+        // Extract photo taken date from EXIF data
+        const photoDate = await extractPhotoDate(fileData.file);
+        console.log('Extracted photo date for', fileData.file.name, ':', photoDate);
+        
         // Check if photo with this hash already exists
         const { data: existingPhoto } = await supabase
           .from('photos')
@@ -426,7 +483,7 @@ const PhotoPortfolio = () => {
         
         const cloudinaryData = await cloudinaryResponse.json();
         
-        // Save to Supabase with location
+        // Save to Supabase with location and photo date
         const { data: photo, error } = await supabase
           .from('photos')
           .insert({
@@ -435,7 +492,8 @@ const PhotoPortfolio = () => {
             title: fileData.title || fileData.file.name,
             description: fileData.description,
             file_hash: fileHash,
-            location: location
+            location: location,
+            photo_date: photoDate
           })
           .select()
           .single();
@@ -673,32 +731,52 @@ const PhotoPortfolio = () => {
       {/* Search Bar */}
       <div className="search-bar">
         <div className="search-container">
-          {/* Selected Filters as Chips */}
-          {selectedFilters.length > 0 && (
-            <div className="filter-chips">
-              {selectedFilters.map((filter, index) => (
-                <div key={index} className="filter-chip">
-                  <span className="chip-icon">
-                    {filter.type === 'tag' ? '🏷️' : '📍'}
-                  </span>
-                  <span className="chip-label">{filter.label}</span>
+          <div className="search-top-row">
+            <div className="search-left">
+              {/* Selected Filters as Chips */}
+              {selectedFilters.length > 0 && (
+                <div className="filter-chips">
+                  {selectedFilters.map((filter, index) => (
+                    <div key={index} className="filter-chip">
+                      <span className="chip-icon">
+                        {filter.type === 'tag' ? '🏷️' : '📍'}
+                      </span>
+                      <span className="chip-label">{filter.label}</span>
+                      <button 
+                        className="chip-remove"
+                        onClick={() => removeFilter(index)}
+                        aria-label="Remove filter"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
                   <button 
-                    className="chip-remove"
-                    onClick={() => removeFilter(index)}
-                    aria-label="Remove filter"
+                    className="clear-all-btn"
+                    onClick={clearAllFilters}
                   >
-                    ×
+                    Clear all
                   </button>
                 </div>
-              ))}
-              <button 
-                className="clear-all-btn"
-                onClick={clearAllFilters}
-              >
-                Clear all
-              </button>
+              )}
             </div>
-          )}
+            
+            {/* Sort Dropdown */}
+            <div className="sort-dropdown">
+              <label htmlFor="sort-select" className="sort-label">Sort by:</label>
+              <select
+                id="sort-select"
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value)}
+                className="sort-select"
+              >
+                <option value="date-taken">Date Taken</option>
+                <option value="date-added">Date Added</option>
+                <option value="location">Location</option>
+                <option value="random">Random</option>
+              </select>
+            </div>
+          </div>
           
           <div className="search-input-wrapper">
             <input
@@ -751,7 +829,7 @@ const PhotoPortfolio = () => {
           
           {selectedFilters.length > 0 && (
             <div className="search-results-info">
-              Showing {filteredPhotos.length} of {photos.length} photos
+              Showing {sortedPhotos.length} of {photos.length} photos
             </div>
           )}
         </div>
@@ -760,7 +838,7 @@ const PhotoPortfolio = () => {
       {/* Gallery */}
       <div className="gallery-container">
         <div className="gallery-grid">
-          {filteredPhotos.map((photo, index) => (
+          {sortedPhotos.map((photo, index) => (
             <div key={photo.id} className="photo-card" onClick={() => openLightbox(index)}>
               <img 
                 src={getThumbUrl(photo.cloudinary_url)} 
@@ -974,7 +1052,7 @@ const PhotoPortfolio = () => {
       )}
 
       {/* Lightbox */}
-      {showLightbox && filteredPhotos[currentPhotoIndex] && (
+      {showLightbox && sortedPhotos[currentPhotoIndex] && (
         <div className="modal-overlay lightbox">
           <button className="lightbox-close" onClick={closeLightbox}>×</button>
           <button className="lightbox-nav prev" onClick={prevPhoto}>‹</button>
@@ -982,8 +1060,8 @@ const PhotoPortfolio = () => {
           
           <div className="lightbox-content">
             <img
-              src={getFullUrl(filteredPhotos[currentPhotoIndex].cloudinary_url)}
-              alt={filteredPhotos[currentPhotoIndex].title}
+              src={getFullUrl(sortedPhotos[currentPhotoIndex].cloudinary_url)}
+              alt={sortedPhotos[currentPhotoIndex].title}
               className="lightbox-image"
               onLoad={() => setImageLoaded(true)}
               style={{ opacity: imageLoaded ? 1 : 0.3, transition: 'opacity 0.3s ease' }}
@@ -992,18 +1070,18 @@ const PhotoPortfolio = () => {
             {/* Only show info when image is loaded */}
             {imageLoaded && (
               <div className="lightbox-info">
-                {/* {filteredPhotos[currentPhotoIndex].title && (
-                  <h3 className="lightbox-title">{filteredPhotos[currentPhotoIndex].title}</h3>
+                {/* {sortedPhotos[currentPhotoIndex].title && (
+                  <h3 className="lightbox-title">{sortedPhotos[currentPhotoIndex].title}</h3>
                 )} */}
-                {filteredPhotos[currentPhotoIndex].description && (
-                  <p className="lightbox-description">{filteredPhotos[currentPhotoIndex].description}</p>
+                {sortedPhotos[currentPhotoIndex].description && (
+                  <p className="lightbox-description">{sortedPhotos[currentPhotoIndex].description}</p>
                 )}
-                {filteredPhotos[currentPhotoIndex].location && (
-                  <p className="lightbox-location">📍 {filteredPhotos[currentPhotoIndex].location}</p>
+                {sortedPhotos[currentPhotoIndex].location && (
+                  <p className="lightbox-location">📍 {sortedPhotos[currentPhotoIndex].location}</p>
                 )}
-                {filteredPhotos[currentPhotoIndex].tags.length > 0 && (
+                {sortedPhotos[currentPhotoIndex].tags.length > 0 && (
                   <div className="lightbox-tags">
-                    {filteredPhotos[currentPhotoIndex].tags.map(tag => (
+                    {sortedPhotos[currentPhotoIndex].tags.map(tag => (
                       <span key={tag.id} className="lightbox-tag">{capitalize(tag.name)}</span>
                     ))}
                   </div>
