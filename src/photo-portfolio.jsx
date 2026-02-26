@@ -1079,7 +1079,7 @@ const PhotoPortfolio = () => {
         </div>
       )}
       <footer>
-        &copy {year} stff1@hotmail.com
+        &copy; {year} <a href="mailto:stff1@hotmail.com">stff1@hotmail.com</a>
       </footer>
     </div>
   );

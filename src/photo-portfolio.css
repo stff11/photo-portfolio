@@ -758,6 +758,12 @@ input[type="file"] {
   -webkit-box-orient: vertical;
 }
 
+footer {
+  text-align: center;
+  padding: 2rem;
+  border-top: 1px solid #ffffff1a;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .header {
