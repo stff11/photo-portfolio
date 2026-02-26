@@ -120,24 +120,12 @@ button {
   position: relative;
 }
 
-/* Top Row: Filters + Sort */
-.search-top-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.search-left {
-  flex: 1;
-}
-
 /* Filter Chips */
 .filter-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  margin-bottom: 1rem;
   align-items: center;
 }
 
@@ -198,11 +186,68 @@ button {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
+/* Search and Sort Row */
+.search-and-sort-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.75rem 3rem 0.75rem 1rem;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 1rem;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.search-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.search-clear {
+  position: absolute;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.search-clear:hover {
+  color: #ffffff;
+}
+
 /* Sort Dropdown */
 .sort-dropdown {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   flex-shrink: 0;
 }
 
@@ -213,7 +258,7 @@ button {
 }
 
 .sort-select {
-  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  padding: 0.75rem 2rem 0.75rem 0.75rem;
   background-color: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
@@ -225,7 +270,7 @@ button {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ffffff' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
-  min-width: 150px;
+  min-width: 140px;
 }
 
 .sort-select:hover {
@@ -725,43 +770,6 @@ input[type="file"] {
   backdrop-filter: blur(10px);
 }
 
-/* Thumbnail Overlay */
-.photo-overlay {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.5) 70%, transparent 100%);
-  padding: 1.5rem 1rem 1rem;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  pointer-events: none;
-}
-
-.photo-card:hover .photo-overlay {
-  opacity: 1;
-}
-
-.photo-location {
-  font-size: 0.85rem;
-  color: #ffffff;
-  margin: 0 0 0.25rem 0;
-  font-weight: 500;
-}
-
-.photo-description {
-  font-size: 0.8rem;
-  color: #e0e0e0;
-  margin: 0;
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
 /* Responsive */
 @media (max-width: 768px) {
   .header {
@@ -807,4 +815,41 @@ input[type="file"] {
     width: 100px;
     height: 100px;
   }
+}
+
+/* Thumbnail Overlay */
+.photo-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.5) 70%, transparent 100%);
+  padding: 1.5rem 1rem 1rem;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.photo-card:hover .photo-overlay {
+  opacity: 1;
+}
+
+.photo-location {
+  font-size: 0.85rem;
+  color: #ffffff;
+  margin: 0 0 0.25rem 0;
+  font-weight: 500;
+}
+
+.photo-description {
+  font-size: 0.8rem;
+  color: #e0e0e0;
+  margin: 0;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
 }

@@ -731,39 +731,68 @@ const PhotoPortfolio = () => {
       {/* Search Bar */}
       <div className="search-bar">
         <div className="search-container">
-          <div className="search-top-row">
-            <div className="search-left">
-              {/* Selected Filters as Chips */}
-              {selectedFilters.length > 0 && (
-                <div className="filter-chips">
-                  {selectedFilters.map((filter, index) => (
-                    <div key={index} className="filter-chip">
-                      <span className="chip-icon">
-                        {filter.type === 'tag' ? '🏷️' : '📍'}
-                      </span>
-                      <span className="chip-label">{filter.label}</span>
-                      <button 
-                        className="chip-remove"
-                        onClick={() => removeFilter(index)}
-                        aria-label="Remove filter"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+          {/* Selected Filters as Chips */}
+          {selectedFilters.length > 0 && (
+            <div className="filter-chips">
+              {selectedFilters.map((filter, index) => (
+                <div key={index} className="filter-chip">
+                  <span className="chip-icon">
+                    {filter.type === 'tag' ? '🏷️' : '📍'}
+                  </span>
+                  <span className="chip-label">{filter.label}</span>
                   <button 
-                    className="clear-all-btn"
-                    onClick={clearAllFilters}
+                    className="chip-remove"
+                    onClick={() => removeFilter(index)}
+                    aria-label="Remove filter"
                   >
-                    Clear all
+                    ×
                   </button>
                 </div>
+              ))}
+              <button 
+                className="clear-all-btn"
+                onClick={clearAllFilters}
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+          
+          {/* Search Input + Sort Dropdown on Same Row */}
+          <div className="search-and-sort-row">
+            <div className="search-input-wrapper">
+              <input
+                type="text"
+                className="search-input"
+                placeholder={selectedFilters.length > 0 ? "Add another category or location..." : "Search by category or location..."}
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setSearchQuery('');
+                    setShowSuggestions(false);
+                  }
+                }}
+              />
+              {searchQuery && (
+                <button 
+                  className="search-clear"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search input"
+                >
+                  ×
+                </button>
               )}
             </div>
             
             {/* Sort Dropdown */}
             <div className="sort-dropdown">
-              <label htmlFor="sort-select" className="sort-label">Sort by:</label>
+              <label htmlFor="sort-select" className="sort-label">Sort:</label>
               <select
                 id="sort-select"
                 value={sortOrder}
@@ -776,36 +805,6 @@ const PhotoPortfolio = () => {
                 <option value="random">Random</option>
               </select>
             </div>
-          </div>
-          
-          <div className="search-input-wrapper">
-            <input
-              type="text"
-              className="search-input"
-              placeholder={selectedFilters.length > 0 ? "Add another category or location..." : "Search by category or location..."}
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setShowSuggestions(true);
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  setSearchQuery('');
-                  setShowSuggestions(false);
-                }
-              }}
-            />
-            {searchQuery && (
-              <button 
-                className="search-clear"
-                onClick={() => setSearchQuery('')}
-                aria-label="Clear search input"
-              >
-                ×
-              </button>
-            )}
           </div>
           
           {/* Suggestions Dropdown */}
