@@ -134,12 +134,14 @@ const PhotoPortfolio = () => {
   const [uploadFiles, setUploadFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [useAITags, setUseAITags] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState([]); // Array of {type, value, label}
   const [sortOrder, setSortOrder] = useState('date-taken'); // 'date-taken', 'date-added', 'random', 'location'
+
+  const year = new Date().getFullYear()  // returns the current year
+  
 
   // Check auth state
   useEffect(() => {
@@ -721,7 +723,7 @@ const PhotoPortfolio = () => {
               </button>
             ) : (
               <button className="btn-secondary" onClick={() => setShowLogin(true)}>
-                Admin Login
+                Admin
               </button>
             )}
           </div>
@@ -988,20 +990,6 @@ const PhotoPortfolio = () => {
               </div>
             )}
 
-            {/* <div className="ai-toggle">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={useAITags}
-                  onChange={(e) => setUseAITags(e.target.checked)}
-                />
-                <span>Generate additional tags using AI (requires API key)</span>
-              </label>
-              {useAITags && !process.env.REACT_APP_ANTHROPIC_API_KEY && (
-                <p className="ai-warning">⚠️ Set REACT_APP_ANTHROPIC_API_KEY environment variable to use AI tagging</p>
-              )}
-            </div> */}
-
             <div className="modal-actions">
               <button
                 onClick={handleUpload}
@@ -1090,6 +1078,9 @@ const PhotoPortfolio = () => {
           </div>
         </div>
       )}
+      <footer>
+        &copy {year} stff1@hotmail.com
+      </footer>
     </div>
   );
 };
