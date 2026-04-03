@@ -650,6 +650,7 @@ input[type="file"] {
 .lightbox-content {
   width: 100vw;
   height: 100vh;
+  height: 100dvh; /* dynamic viewport height for iPhones */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -660,7 +661,8 @@ input[type="file"] {
 
 .lightbox-image-placeholder {
   max-width: 95vw;
-  max-height: 85vh;
+  max-height: 90vh;
+  max-height: 90dvh; /* dynamic viewport height for iPhones */
   object-fit: contain;
   filter: blur(10px); /* Blurs the low-res grid image */
   transform: scale(1.05); /* Prevents white edges from the blur */
@@ -669,6 +671,7 @@ input[type="file"] {
 .lightbox-image {
   max-width: 100vw;
   max-height: 100vh;
+  max-height: 100dvh; /* dynamic viewport height for iPhones */
   object-fit: contain;
   border-radius: 0;
   position: absolute;
@@ -683,6 +686,7 @@ input[type="file"] {
   padding: 5rem 1rem 1rem;
   text-align: center;
   color: white;
+  padding-bottom: env(safe-area-inset-bottom); /* for iPhones */
 }
 
 .lightbox-title {
