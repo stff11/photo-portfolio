@@ -293,23 +293,29 @@ useEffect(() => {
       .filter(Boolean)
   )];
 
-  // Filter photos by selected filters (AND logic - must match all selected filters)
+  // Filter photos by selected filters (AND logic across types - OR within same types)
   const filteredPhotos = photos.filter(photo => {
     if (selectedFilters.length === 0) return true;
-    
-    return selectedFilters.every(filter => {
-      if (filter.type === 'tag') {
-        // Check if photo has this tag (exact match)
-        return photo.tags.some(tag => 
+  
+    const tagFilters = selectedFilters.filter(f => f.type === 'tag');
+    const locationFilters = selectedFilters.filter(f => f.type === 'location');
+  
+    const matchesTags =
+      tagFilters.length === 0 ||
+      tagFilters.some(filter =>
+        photo.tags.some(tag =>
           tag.name.toLowerCase() === filter.value.toLowerCase()
-        );
-      } else if (filter.type === 'location') {
-        // Check if photo location contains this text (partial match)
-        return photo.location && 
-          photo.location.toLowerCase().includes(filter.value.toLowerCase());
-      }
-      return false;
-    });
+        )
+      );
+  
+    const matchesLocation =
+      locationFilters.length === 0 ||
+      locationFilters.some(filter =>
+        photo.location &&
+        photo.location.toLowerCase().includes(filter.value.toLowerCase())
+      );
+  
+    return matchesTags && matchesLocation;
   });
 
   // Sort filtered photos based on selected sort order
@@ -951,6 +957,16 @@ useEffect(() => {
                 <img 
                   src={getThumbUrl(photo.cloudinary_url)} 
                   alt={photo.title || 'Portfolio photo'} 
+                  onLoad={(e) => {
+                    const img = e.target;
+                    if (img.naturalWidth > img.naturalHeight) {
+                      img.classList.add("landscape");
+                    } else if (img.naturalWidth < img.naturalHeight) {
+                      img.classList.add("portrait");
+                    } else {
+                      img.classList.add("square");
+                    }
+                  }}
                 />
                 
                 {/* Thumbnail overlay with location and description */}
