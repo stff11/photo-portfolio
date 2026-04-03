@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Production Build
+/build
+/dist
+
+# Environment Variables (CRITICAL)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDEs and System Files
+.DS_Store
+.vscode/
+.idea/
+
+# Deployment platforms
+.vercel
+.netlify

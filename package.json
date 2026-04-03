@@ -1,0 +1,42 @@
+{
+  "name": "photo-portfolio",
+  "version": "1.0.0",
+  "description": "Minimal elegant photography portfolio with Supabase and Cloudinary",
+  "private": true,
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "CI=false react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "vercel-build": "react-scripts build"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.101.1",
+    "cloudinary": "^1.41.0",
+    "exifr": "^7.1.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
