@@ -957,6 +957,8 @@ useEffect(() => {
                 <img 
                   src={getThumbUrl(photo.cloudinary_url)} 
                   alt={photo.title || 'Portfolio photo'} 
+                  loading={index < 3 ? 'eager' : 'lazy'}
+                  fetchpriority={index<3 ? 'high' : 'auto'}
                   onLoad={(e) => {
                     const img = e.target;
                     if (img.naturalWidth > img.naturalHeight) {
