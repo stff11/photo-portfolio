@@ -56,6 +56,15 @@ html {
   align-items: center;
 }
 
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+a:hover {
+  opacity: 0.8;
+}
+
 .site-title {
   font-family: 'Cormorant Garamond', serif;
   font-size: 2rem;

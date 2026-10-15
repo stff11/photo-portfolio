@@ -4,14 +4,13 @@ import exifr from 'exifr';
 import './photo-portfolio.css';
 
 // Initialize Supabase client
-const supabase = createClient(
-  'https://ygftopwtblcoxgzusywy.supabase.co',
-  'sb_publishable_dROTCxmlboYY-oj5UjwmPQ_KbP0MdlS'
-);
-
-// Cloudinary config
-const CLOUDINARY_CLOUD_NAME = 'dgsr2qkwp';
-const CLOUDINARY_UPLOAD_PRESET = 'portfolio_preset';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  }
+});
 
 // Compute SHA-256 hash of file for duplicate detection
 const computeFileHash = async (file) => {
