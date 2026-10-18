@@ -11,3 +11,15 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Built JS/CSS files have content hashes in their names, so they can be cached
+# forever. (Netlify's default is to revalidate on every visit.)
+[[headers]]
+  for = "/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.svg"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"

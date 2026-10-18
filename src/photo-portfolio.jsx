@@ -1,16 +1,23 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import exifr from 'exifr';
 import './photo-portfolio.css';
 
-// Initialize Supabase client
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true
-  }
-});
+// Create React App uses REACT_APP_ prefix
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error("Missing Environment Variables! Ensure your .env file has REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY");
+}
+
+const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder'
+);
+
+const CLOUDINARY_CLOUD_NAME = process.env.REACT_APP_CLOUDINARY_NAME;
+const CLOUDINARY_UPLOAD_PRESET = process.env.REACT_APP_CLOUDINARY_PRESET;
 
 // Compute SHA-256 hash of file for duplicate detection
 const computeFileHash = async (file) => {
@@ -119,9 +126,97 @@ const reverseGeocode = async (latitude, longitude) => {
 // Helper to capitalize first letter
 const capitalize = (str) => str.charAt(0).toUpperCase() + str.slice(1);
 
+// ---------------------------------------------------------------------------
+// Cloudinary URL helpers
+// All transformations live here so every request for the same image uses the
+// exact same URL (=> browser + CDN cache hits instead of near-duplicate variants).
+// ---------------------------------------------------------------------------
+const cld = (url, transformation) =>
+  url ? url.replace('/upload/', `/upload/${transformation}/`) : '';
+
+// Grid thumbnails: responsive candidates, the browser picks one via srcset/sizes.
+const THUMB_WIDTHS = [480, 800, 1200];
+const THUMB_SIZES = '(max-width: 768px) 100vw, 500px';
+const getThumbUrl = (url, width = 800) =>
+  cld(url, `c_limit,w_${width},q_auto:good,f_auto`);
+const getThumbSrcSet = (url) =>
+  THUMB_WIDTHS.map((w) => `${getThumbUrl(url, w)} ${w}w`).join(', ');
+
+// Lightbox: size the image to the screen (in device pixels) but snap to a few
+// fixed widths so we don't create dozens of one-off variants.
+const FULL_WIDTH_BUCKETS = [1200, 1600, 2000, 2560, 3200];
+const getFullUrl = (url) => {
+  const dpr = window.devicePixelRatio || 1;
+  const needed = window.innerWidth * dpr;
+  const width =
+    FULL_WIDTH_BUCKETS.find((b) => b >= needed) ||
+    FULL_WIDTH_BUCKETS[FULL_WIDTH_BUCKETS.length - 1];
+  return cld(url, `c_limit,w_${width},q_auto:good,f_auto`);
+};
+
+// Fetch + decode an image ahead of time. We keep a reference to the Image
+// object (so it isn't garbage-collected mid-download) and cap how many we hold.
+const prefetchCache = new Map();
+const prefetchImage = (url) => {
+  if (!url || prefetchCache.has(url)) return;
+  const img = new Image();
+  img.decoding = 'async';
+  img.src = url;
+  if (img.decode) img.decode().catch(() => {});
+  prefetchCache.set(url, img);
+  if (prefetchCache.size > 12) {
+    prefetchCache.delete(prefetchCache.keys().next().value);
+  }
+};
+
+// The grid thumbnail the browser actually chose (so the lightbox placeholder is
+// an instant cache hit whatever srcset candidate was picked).
+const getCachedThumb = (photo) => {
+  const el = document.querySelector(`img[data-photo-id="${photo.id}"]`);
+  return (el && el.currentSrc) || getThumbUrl(photo.cloudinary_url);
+};
+
+// Runs when a grid thumbnail has loaded: fade it in, drop the placeholder
+// sizing on the card, and tag its orientation (existing behaviour).
+const onThumbLoad = (e) => {
+  const img = e.currentTarget || e.target;
+  if (img.naturalWidth > img.naturalHeight) img.classList.add('landscape');
+  else if (img.naturalWidth < img.naturalHeight) img.classList.add('portrait');
+  else img.classList.add('square');
+  if (img.parentElement) img.parentElement.classList.add('loaded');
+};
+
+// ---------------------------------------------------------------------------
+// Photo list cache (stale-while-revalidate): show the last known gallery
+// instantly, then refresh from Supabase in the background.
+// ---------------------------------------------------------------------------
+const PHOTOS_CACHE_KEY = 'portfolio:photos:v1';
+const readPhotosCache = () => {
+  try {
+    const raw = localStorage.getItem(PHOTOS_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+const writePhotosCache = (photos) => {
+  try {
+    localStorage.setItem(PHOTOS_CACHE_KEY, JSON.stringify(photos));
+  } catch {
+    /* storage full or blocked - the cache is optional */
+  }
+};
+const extractTags = (photos) => {
+  const byId = new Map();
+  photos.forEach((p) => p.tags.forEach((t) => byId.set(t.id, t)));
+  return Array.from(byId.values());
+};
+
 const PhotoPortfolio = () => {
-  const [photos, setPhotos] = useState([]);
-  const [allTags, setAllTags] = useState([]);
+  const [initialPhotos] = useState(readPhotosCache);
+  const [photos, setPhotos] = useState(initialPhotos);
+  const [allTags, setAllTags] = useState(() => extractTags(initialPhotos));
   const [user, setUser] = useState(null);
   const [showLogin, setShowLogin] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -133,15 +228,85 @@ const PhotoPortfolio = () => {
   const [uploadFiles, setUploadFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [loadedId, setLoadedId] = useState(null); // id of the photo whose full-size image has loaded
+  const fullImgRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState([]); // Array of {type, value, label}
   const [sortOrder, setSortOrder] = useState('date-taken'); // 'date-taken', 'date-added', 'random', 'location'
+  const [loading, setLoading] = useState(initialPhotos.length === 0); // skip the spinner when we have cached photos
 
   const year = new Date().getFullYear()  // returns the current year
-  
 
+
+  // Touchpoint for swiping photos
+// --- 1. Swipe/Trackpad State & Refs ---
+const touchStartX = useRef(null);
+const scrollAccumulator = useRef(0); // For trackpad sensitivity
+const isThrottled = useRef(false); // New: Prevents double-swipes from momentum
+const touchMinDistance = 50;
+
+// Mobile Touch Handlers
+const handleTouchStart = (e) => {
+  touchStartX.current = e.touches[0].clientX;
+};
+
+const handleTouchEnd = (e) => {
+  if (!touchStartX.current) return;
+  const distance = touchStartX.current - e.changedTouches[0].clientX;
+  if (distance > touchMinDistance) nextPhoto();
+  else if (distance < -touchMinDistance) prevPhoto();
+  touchStartX.current = null;
+};
+
+// MacBook Trackpad Handler
+const handleWheel = (e) => {
+  if (!showLightbox || isThrottled.current) return;
+
+  // We only care about horizontal movement (deltaX)
+  if (Math.abs(e.deltaX) > 5) {
+    scrollAccumulator.current += e.deltaX;
+
+    const SENSITIVITY_THRESHOLD = 100;
+
+    if (Math.abs(scrollAccumulator.current) > SENSITIVITY_THRESHOLD) {
+      // Trigger the change
+      if (scrollAccumulator.current > 0) {
+        nextPhoto();
+      } else {
+        prevPhoto();
+      }
+
+      // --- THE FIX ---
+      // 1. Reset accumulator immediately
+      scrollAccumulator.current = 0;
+      
+      // 2. Start cooldown to ignore trackpad momentum
+      isThrottled.current = true;
+      setTimeout(() => {
+        isThrottled.current = false;
+      }, 600); // 600ms is the "sweet spot" for Mac trackpad inertia
+    }
+  } else {
+    // If the user stops moving horizontally, bleed off the accumulator
+    // This prevents "stale" scroll distance from staying in the memory
+    scrollAccumulator.current *= 0.8; 
+  }
+};
+
+// Ensure we reset everything when the lightbox opens or closes
+useEffect(() => {
+  if (!showLightbox) {
+    scrollAccumulator.current = 0;
+    isThrottled.current = false;
+  }
+}, [showLightbox]);
+
+// Reset accumulator when photo changes
+useEffect(() => {
+  scrollAccumulator.current = 0;
+}, [currentPhotoIndex]);
+  
   // Check auth state
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -156,6 +321,7 @@ const PhotoPortfolio = () => {
   }, []);
 
   // Fetch photos
+  // (No setLoading(true) here: refetching after an edit/delete must not tear down the grid.)
   const fetchPhotos = useCallback(async () => {
     const { data, error } = await supabase
       .from('photos')
@@ -180,17 +346,25 @@ const PhotoPortfolio = () => {
       
       const processedPhotos = Object.values(uniquePhotos);
       setPhotos(processedPhotos);
-      
-      // Extract unique tags
-      const tagSet = new Set();
-      processedPhotos.forEach(p => p.tags.forEach(t => tagSet.add(JSON.stringify(t))));
-      setAllTags(Array.from(tagSet).map(t => JSON.parse(t)));
+      setAllTags(extractTags(processedPhotos));
+      writePhotosCache(processedPhotos);
     }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
     fetchPhotos();
   }, [fetchPhotos]);
+
+  useEffect(() => {
+    return () => {
+      uploadFiles.forEach(file => {
+        if (file.preview) {
+          URL.revokeObjectURL(file.preview);
+        }
+      });
+    };
+  }, [uploadFiles]);
 
   // Get all unique locations
   const allLocations = [...new Set(photos.map(p => p.location).filter(Boolean))];
@@ -205,27 +379,43 @@ const PhotoPortfolio = () => {
       .filter(Boolean)
   )];
 
-  // Filter photos by selected filters (AND logic - must match all selected filters)
-  const filteredPhotos = photos.filter(photo => {
+  // Filter photos by selected filters (AND logic across types - OR within same types)
+  const filteredPhotos = useMemo(() => photos.filter(photo => {
     if (selectedFilters.length === 0) return true;
-    
-    return selectedFilters.every(filter => {
-      if (filter.type === 'tag') {
-        // Check if photo has this tag (exact match)
-        return photo.tags.some(tag => 
+  
+    const tagFilters = selectedFilters.filter(f => f.type === 'tag');
+    const locationFilters = selectedFilters.filter(f => f.type === 'location');
+  
+    const matchesTags =
+      tagFilters.length === 0 ||
+      tagFilters.some(filter =>
+        photo.tags.some(tag =>
           tag.name.toLowerCase() === filter.value.toLowerCase()
-        );
-      } else if (filter.type === 'location') {
-        // Check if photo location contains this text (partial match)
-        return photo.location && 
-          photo.location.toLowerCase().includes(filter.value.toLowerCase());
-      }
-      return false;
-    });
-  });
+        )
+      );
+  
+    const matchesLocation =
+      locationFilters.length === 0 ||
+      locationFilters.some(filter =>
+        photo.location &&
+        photo.location.toLowerCase().includes(filter.value.toLowerCase())
+      );
+  
+    return matchesTags && matchesLocation;
+  }), [photos, selectedFilters]);
 
-  // Sort filtered photos based on selected sort order
-  const sortedPhotos = [...filteredPhotos].sort((a, b) => {
+  // Sort filtered photos based on selected sort order.
+  // Memoised so the order is stable between renders (the old inline
+  // Math.random() sort re-shuffled on every render, so the lightbox could jump
+  // to a different photo whenever any state changed).
+  const sortedPhotos = useMemo(() => {
+    if (sortOrder === 'random') {
+      return filteredPhotos
+        .map((photo) => ({ photo, key: Math.random() }))
+        .sort((a, b) => a.key - b.key)
+        .map(({ photo }) => photo);
+    }
+    return [...filteredPhotos].sort((a, b) => {
     switch (sortOrder) {
       case 'date-taken':
         // Sort by photo_date (newest first), fall back to created_at
@@ -243,14 +433,11 @@ const PhotoPortfolio = () => {
         const locB = b.location || 'zzz';
         return locA.localeCompare(locB);
       
-      case 'random':
-        // Random sort (using a consistent seed based on photo IDs)
-        return Math.random() - 0.5;
-      
       default:
         return 0;
     }
-  });
+    });
+  }, [filteredPhotos, sortOrder]);
 
   // Get matching suggestions based on search query
   const getSuggestions = () => {
@@ -427,6 +614,8 @@ const PhotoPortfolio = () => {
     if (uploadFiles.length === 0) return;
     
     setUploading(true);
+
+    try {
     
     for (let i = 0; i < uploadFiles.length; i++) {
       const fileData = uploadFiles[i];
@@ -494,7 +683,9 @@ const PhotoPortfolio = () => {
             description: fileData.description,
             file_hash: fileHash,
             location: location,
-            photo_date: photoDate
+            photo_date: photoDate,
+            width: cloudinaryData.width,
+            height: cloudinaryData.height
           })
           .select()
           .single();
@@ -540,8 +731,10 @@ const PhotoPortfolio = () => {
         console.error(error);
       }
     }
+    } finally {
+      setUploading(false);
+    }
     
-    setUploading(false);
     fetchPhotos();
     
     // Clear uploaded files
@@ -647,8 +840,7 @@ const PhotoPortfolio = () => {
   const openLightbox = (index) => {
     setCurrentPhotoIndex(index);
     setShowLightbox(true);
-    setImageLoaded(false);
-    
+
     if (document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen().catch(err => {
         console.log('Fullscreen request failed:', err);
@@ -657,12 +849,10 @@ const PhotoPortfolio = () => {
   };
 
   const nextPhoto = useCallback(() => {
-    setImageLoaded(false);
     setCurrentPhotoIndex((prev) => (prev + 1) % filteredPhotos.length);
   }, [filteredPhotos.length]);
 
   const prevPhoto = useCallback(() => {
-    setImageLoaded(false);
     setCurrentPhotoIndex((prev) => (prev - 1 + filteredPhotos.length) % filteredPhotos.length);
   }, [filteredPhotos.length]);
 
@@ -673,6 +863,42 @@ const PhotoPortfolio = () => {
       document.exitFullscreen();
     }
   }, []);
+
+  // The photo currently shown in the lightbox, and whether its full-size image
+  // has arrived. Derived from the photo id, so navigating never needs a reset
+  // (and an image we already have shows instantly).
+  const currentPhoto = sortedPhotos[currentPhotoIndex];
+  const imageLoaded = !!currentPhoto && loadedId === currentPhoto.id;
+
+  // An image served from cache is already "complete" when it mounts. Checking in a
+  // layout effect (before the first paint) means it appears instantly at full
+  // opacity; only images that really have to download get the fade-in.
+  useLayoutEffect(() => {
+    const el = fullImgRef.current;
+    if (showLightbox && el && el.complete && el.naturalWidth > 0 && currentPhoto) {
+      setLoadedId(currentPhoto.id);
+    }
+  }, [showLightbox, currentPhoto]);
+
+  // Prefetch neighbours - but only once the current image has finished, so we
+  // never compete with it for bandwidth. +/-1 right away, +/-2 when idle.
+  useEffect(() => {
+    if (!showLightbox || !imageLoaded || sortedPhotos.length < 2) return;
+    // Respect Data Saver / very slow connections: don't spend their data on photos they may never open.
+    const conn = navigator.connection;
+    if (conn && (conn.saveData || /(^|-)2g$/.test(conn.effectiveType || ''))) return;
+    const at = (offset) =>
+      sortedPhotos[(currentPhotoIndex + offset + sortedPhotos.length) % sortedPhotos.length];
+
+    [1, -1].forEach((o) => prefetchImage(getFullUrl(at(o).cloudinary_url)));
+
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 300));
+    const cancelIdle = window.cancelIdleCallback || clearTimeout;
+    const handle = idle(() => {
+      [2, -2].forEach((o) => prefetchImage(getFullUrl(at(o).cloudinary_url)));
+    });
+    return () => cancelIdle(handle);
+  }, [showLightbox, imageLoaded, currentPhotoIndex, sortedPhotos]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -685,22 +911,6 @@ const PhotoPortfolio = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showLightbox, nextPhoto, prevPhoto, closeLightbox]);
-
-  // Cloudinary URL builders
-  const getThumbUrl = (url) => {
-    if (!url) return '';
-    if (url.includes('/upload/')) {
-      // Higher quality thumbnails
-      return url.replace('/upload/', '/upload/w_800,h_800,c_limit,q_90,f_auto/');
-    }
-    return url;
-  };
-
-  const getFullUrl = (url) => {
-    if (!url) return '';
-    // Return original quality for fullscreen - no transformations
-    return url;
-  };
 
   return (
     <div>
@@ -837,54 +1047,81 @@ const PhotoPortfolio = () => {
 
       {/* Gallery */}
       <div className="gallery-container">
-        <div className="gallery-grid">
-          {sortedPhotos.map((photo, index) => (
-            <div key={photo.id} className="photo-card" onClick={() => openLightbox(index)}>
-              <img 
-                src={getThumbUrl(photo.cloudinary_url)} 
-                alt={photo.title || 'Portfolio photo'} 
-              />
-              
-              {/* Thumbnail overlay with location and description */}
-              {(photo.location || photo.description) && (
-                <div className="photo-overlay">
-                  {photo.location && (
-                    <p className="photo-location">📍 {photo.location}</p>
-                  )}
-                  {photo.description && (
-                    <p className="photo-description">{photo.description}</p>
-                  )}
-                </div>
-              )}
-              
-              {user && (
-                <div className="admin-controls">
-                  <button 
-                    className="admin-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingPhoto({
-                        ...photo,
-                        tags: photo.tags.map(t => t.name).join(', ')
-                      });
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button 
-                    className="admin-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(photo);
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+        {loading ? (
+          <div className="gallery-loading">
+            Loading photos...
+          </div>
+        ) : (
+          <div className="gallery-grid">
+            {sortedPhotos.map((photo, index) => (
+              <div
+                key={photo.id}
+                className="photo-card"
+                onClick={() => openLightbox(index)}
+                // Reserve the card's space until its image arrives, so lazy images
+                // below the fold don't all collapse to 0px and load at once.
+                style={photo.width && photo.height ? { '--ar': `${photo.width} / ${photo.height}` } : undefined}
+              >
+                <img
+                  src={getThumbUrl(photo.cloudinary_url)}
+                  srcSet={getThumbSrcSet(photo.cloudinary_url)}
+                  sizes={THUMB_SIZES}
+                  data-photo-id={photo.id}
+                  alt={photo.title || 'Portfolio photo'}
+                  loading={index < 3 ? 'eager' : 'lazy'}
+                  fetchpriority={index<3 ? 'high' : 'auto'}
+                  decoding="async"
+                  onLoad={onThumbLoad}
+                  onError={(e) => e.currentTarget.parentElement?.classList.add('loaded')}
+                  ref={(el) => {
+                    // Cached images can finish before React attaches onLoad.
+                    if (el && el.complete && el.naturalWidth > 0 && !el.classList.contains('landscape') && !el.classList.contains('portrait') && !el.classList.contains('square')) {
+                      onThumbLoad({ currentTarget: el });
+                    }
+                  }}
+                />
+                
+                {/* Thumbnail overlay with location and description */}
+                {(photo.location || photo.description) && (
+                  <div className="photo-overlay">
+                    {photo.location && (
+                      <p className="photo-location">📍 {photo.location}</p>
+                    )}
+                    {photo.description && (
+                      <p className="photo-description">{photo.description}</p>
+                    )}
+                  </div>
+                )}
+                
+                {user && (
+                  <div className="admin-controls">
+                    <button 
+                      className="admin-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingPhoto({
+                          ...photo,
+                          tags: photo.tags.map(t => t.name).join(', ')
+                        });
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button 
+                      className="admin-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(photo);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Login Modal */}
@@ -1039,18 +1276,39 @@ const PhotoPortfolio = () => {
 
       {/* Lightbox */}
       {showLightbox && sortedPhotos[currentPhotoIndex] && (
-        <div className="modal-overlay lightbox">
+        <div 
+          className="modal-overlay lightbox"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onWheel={handleWheel} // This captures MacBook trackpad swipes
+        >
           <button className="lightbox-close" onClick={closeLightbox}>×</button>
           <button className="lightbox-nav prev" onClick={prevPhoto}>‹</button>
           <button className="lightbox-nav next" onClick={nextPhoto}>›</button>
+
           
-          <div className="lightbox-content">
+          
+          <div className="lightbox-content" onClick={e => e.stopPropagation()}>
+            {/* The "Base" Thumbnail - the exact file the grid already loaded, so it's an instant cache hit */}
             <img
+              src={getCachedThumb(sortedPhotos[currentPhotoIndex])}
+              className="lightbox-image-placeholder"
+              alt=""
+              aria-hidden="true"
+            />
+
+            {/* The Full Image - Fades in over the placeholder */}
+            <img
+              key={sortedPhotos[currentPhotoIndex].id}
+              ref={fullImgRef}
               src={getFullUrl(sortedPhotos[currentPhotoIndex].cloudinary_url)}
-              alt={sortedPhotos[currentPhotoIndex].title}
               className="lightbox-image"
-              onLoad={() => setImageLoaded(true)}
-              style={{ opacity: imageLoaded ? 1 : 0.3, transition: 'opacity 0.3s ease' }}
+              decoding="async"
+              onLoad={() => setLoadedId(sortedPhotos[currentPhotoIndex].id)}
+              style={{
+                opacity: imageLoaded ? 1 : 0
+              }}
+              alt={sortedPhotos[currentPhotoIndex].title || sortedPhotos[currentPhotoIndex].description || 'Portfolio photo'}
             />
             
             {/* Only show info when image is loaded */}
