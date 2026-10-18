@@ -164,7 +164,7 @@ const prefetchImage = (url) => {
   img.src = url;
   if (img.decode) img.decode().catch(() => {});
   prefetchCache.set(url, img);
-  if (prefetchCache.size > 12) {
+  if (prefetchCache.size > 16) {
     prefetchCache.delete(prefetchCache.keys().next().value);
   }
 };
@@ -911,22 +911,36 @@ useEffect(() => {
     }
   }, [showLightbox, currentPhoto]);
 
-  // Prefetch neighbours - but only once the current image has finished, so we
-  // never compete with it for bandwidth. +/-1 right away, +/-2 when idle.
+  // Prefetch ahead in the direction the visitor is travelling (3 ahead, 1 behind).
+  // Starting only once the current image has finished avoids competing with it; a
+  // fast clicker is usually still on a photo that is already in flight/cached.
+  const lastIndexRef = useRef(currentPhotoIndex);
+  const directionRef = useRef(1);
+  useEffect(() => {
+    if (currentPhotoIndex !== lastIndexRef.current) {
+      const n = sortedPhotos.length || 1;
+      const diff = (currentPhotoIndex - lastIndexRef.current + n) % n;
+      directionRef.current = diff <= n / 2 ? 1 : -1;
+      lastIndexRef.current = currentPhotoIndex;
+    }
+  }, [currentPhotoIndex, sortedPhotos.length]);
+
   useEffect(() => {
     if (!showLightbox || !imageLoaded || sortedPhotos.length < 2) return;
     // Respect Data Saver / very slow connections: don't spend their data on photos they may never open.
     const conn = navigator.connection;
     if (conn && (conn.saveData || /(^|-)2g$/.test(conn.effectiveType || ''))) return;
+    const dir = directionRef.current;
     const at = (offset) =>
       sortedPhotos[(currentPhotoIndex + offset + sortedPhotos.length) % sortedPhotos.length];
 
-    [1, -1].forEach((o) => prefetchImage(getFullUrl(at(o).cloudinary_url)));
+    // next in travel direction first, then the one behind
+    [dir, -dir].forEach((o) => prefetchImage(getFullUrl(at(o).cloudinary_url)));
 
     const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 300));
     const cancelIdle = window.cancelIdleCallback || clearTimeout;
     const handle = idle(() => {
-      [2, -2].forEach((o) => prefetchImage(getFullUrl(at(o).cloudinary_url)));
+      [2 * dir, 3 * dir].forEach((o) => prefetchImage(getFullUrl(at(o).cloudinary_url)));
     });
     return () => cancelIdle(handle);
   }, [showLightbox, imageLoaded, currentPhotoIndex, sortedPhotos]);
@@ -1328,9 +1342,6 @@ useEffect(() => {
             {/* Only show info when image is loaded */}
             {imageLoaded && (
               <div className="lightbox-info">
-                {/* {sortedPhotos[currentPhotoIndex].title && (
-                  <h3 className="lightbox-title">{sortedPhotos[currentPhotoIndex].title}</h3>
-                )} */}
                 {sortedPhotos[currentPhotoIndex].description && (
                   <p className="lightbox-description">{sortedPhotos[currentPhotoIndex].description}</p>
                 )}
