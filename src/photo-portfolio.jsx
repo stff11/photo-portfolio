@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import exifr from 'exifr';
 import './photo-portfolio.css';
 
 // Create React App uses REACT_APP_ prefix
@@ -31,7 +30,7 @@ const computeFileHash = async (file) => {
 // Extract location from EXIF data
 const extractLocation = async (file) => {
   try {
-    const exifData = await exifr.parse(file, { gps: true });
+    const exifData = await (await import('exifr')).default.parse(file, { gps: true });
     
     if (exifData && exifData.latitude && exifData.longitude) {
       console.log('GPS coordinates found:', exifData.latitude, exifData.longitude);
@@ -51,7 +50,7 @@ const extractLocation = async (file) => {
 // Extract photo taken date from EXIF data
 const extractPhotoDate = async (file) => {
   try {
-    const exifData = await exifr.parse(file, { 
+    const exifData = await (await import('exifr')).default.parse(file, { 
       pick: ['DateTimeOriginal', 'CreateDate', 'DateTime'] 
     });
     
@@ -75,7 +74,7 @@ const extractPhotoDate = async (file) => {
 // Extract keywords/tags from EXIF data
 const extractExifKeywords = async (file) => {
   try {
-    const exifData = await exifr.parse(file, { 
+    const exifData = await (await import('exifr')).default.parse(file, { 
       iptc: true,  // IPTC metadata includes keywords
       xmp: true    // XMP metadata also has keywords
     });
@@ -135,8 +134,9 @@ const cld = (url, transformation) =>
   url ? url.replace('/upload/', `/upload/${transformation}/`) : '';
 
 // Grid thumbnails: responsive candidates, the browser picks one via srcset/sizes.
-const THUMB_WIDTHS = [480, 800, 1200];
-const THUMB_SIZES = '(max-width: 768px) 100vw, 500px';
+const THUMB_WIDTHS = [360, 540, 800, 1200];
+// Phones: a ~600px-wide candidate is plenty for a grid card; the lightbox loads the big one.
+const THUMB_SIZES = '(max-width: 768px) 62vw, 400px';
 const getThumbUrl = (url, width = 800) =>
   cld(url, `c_limit,w_${width},q_auto:good,f_auto`);
 const getThumbSrcSet = (url) =>
@@ -190,6 +190,37 @@ const onThumbLoad = (e) => {
 // Photo list cache (stale-while-revalidate): show the last known gallery
 // instantly, then refresh from Supabase in the background.
 // ---------------------------------------------------------------------------
+// Grid thumbnail. Only starts downloading when it is near the viewport (IntersectionObserver),
+// so on slow connections the first photos aren't fighting a dozen others for bandwidth.
+function ThumbImg({ photo, index }) {
+  const imgRef = useRef(null);
+  const [near, setNear] = useState(index === 0);
+  useEffect(() => {
+    if (near) return undefined;
+    const card = imgRef.current?.parentElement;
+    if (!card || typeof IntersectionObserver === 'undefined') { setNear(true); return undefined; }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting)) { setNear(true); io.disconnect(); }
+    }, { rootMargin: '250px 0px' });
+    io.observe(card);
+    return () => io.disconnect();
+  }, [near]);
+  return (
+    <img
+      ref={imgRef}
+      src={near ? getThumbUrl(photo.cloudinary_url, 540) : undefined}
+      srcSet={near ? getThumbSrcSet(photo.cloudinary_url) : undefined}
+      sizes={THUMB_SIZES}
+      data-photo-id={photo.id}
+      alt={photo.title || 'Portfolio photo'}
+      fetchpriority={index === 0 ? 'high' : 'auto'}
+      decoding="async"
+      onLoad={onThumbLoad}
+      onError={(e) => e.currentTarget.parentElement?.classList.add('loaded')}
+    />
+  );
+}
+
 const PHOTOS_CACHE_KEY = 'portfolio:photos:v1';
 const readPhotosCache = () => {
   try {
@@ -1062,24 +1093,7 @@ useEffect(() => {
                 // below the fold don't all collapse to 0px and load at once.
                 style={photo.width && photo.height ? { '--ar': `${photo.width} / ${photo.height}` } : undefined}
               >
-                <img
-                  src={getThumbUrl(photo.cloudinary_url)}
-                  srcSet={getThumbSrcSet(photo.cloudinary_url)}
-                  sizes={THUMB_SIZES}
-                  data-photo-id={photo.id}
-                  alt={photo.title || 'Portfolio photo'}
-                  loading={index < 3 ? 'eager' : 'lazy'}
-                  fetchpriority={index<3 ? 'high' : 'auto'}
-                  decoding="async"
-                  onLoad={onThumbLoad}
-                  onError={(e) => e.currentTarget.parentElement?.classList.add('loaded')}
-                  ref={(el) => {
-                    // Cached images can finish before React attaches onLoad.
-                    if (el && el.complete && el.naturalWidth > 0 && !el.classList.contains('landscape') && !el.classList.contains('portrait') && !el.classList.contains('square')) {
-                      onThumbLoad({ currentTarget: el });
-                    }
-                  }}
-                />
+                <ThumbImg photo={photo} index={index} />
                 
                 {/* Thumbnail overlay with location and description */}
                 {(photo.location || photo.description) && (
